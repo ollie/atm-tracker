@@ -65,6 +65,9 @@ const (
 	windowSize      = 100
 	snapshotEvery   = 2 * time.Second
 	sendEvery       = 10 * time.Second
+	readPoll        = 1 * time.Second
+	cleanupTimeout  = 1 * time.Second
+	shutdownGrace   = 5 * time.Second
 	meterToFeetCoef = 3.28084
 	mpsToKtsCoef    = 1.94384
 
@@ -157,7 +160,6 @@ func (w *uiLogWriter) Write(p []byte) (int, error) {
 const version = "0.0.1"
 
 var (
-	client            *resty.Client
 	apiBaseURL        = "http://localhost:4567"
 	apiUserAgent      = "ATM Tracker v" + version
 	apiRequestTimeout = 5 * time.Second
@@ -208,6 +210,7 @@ func main() {
 	stopButton.Hide()
 
 	shutdown := func() {
+		log.SetOutput(os.Stderr)
 		if trackerStop != nil {
 			trackerStop()
 		}
@@ -233,17 +236,32 @@ func main() {
 
 	go func() {
 		<-appCtx.Done()
-		fyne.Do(app.Quit)
+		fyne.Do(shutdown)
 	}()
 
 	win.Resize(fyne.NewSize(800, 600))
 	win.ShowAndRun()
-	wg.Wait() // Let goroutines unsubscribe and close cleanly.
+
+	if !waitFor(&wg, shutdownGrace) {
+		log.Printf("gave up after %s waiting for tracker goroutines", shutdownGrace)
+	}
 	log.Println("stopped")
 }
 
+func waitFor(wg *sync.WaitGroup, timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 func startTracker(ctx context.Context, stop context.CancelFunc, wg *sync.WaitGroup) error {
-	client = resty.New().
+	client := resty.New().
 		SetBaseURL(apiBaseURL).
 		SetHeader("User-Agent", apiUserAgent).
 		SetHeader("Content-Type", "application/json").
@@ -251,11 +269,13 @@ func startTracker(ctx context.Context, stop context.CancelFunc, wg *sync.WaitGro
 
 	addr, err := net.ResolveUDPAddr("udp", xplaneAddr)
 	if err != nil {
+		_ = client.Close()
 		return fmt.Errorf("resolve %s: %w", xplaneAddr, err)
 	}
 
 	conn, err := net.ListenUDP("udp", nil) // nil laddr means 0.0.0.0
 	if err != nil {
+		_ = client.Close()
 		return fmt.Errorf("listen: %w", err)
 	}
 
@@ -263,6 +283,7 @@ func startTracker(ctx context.Context, stop context.CancelFunc, wg *sync.WaitGro
 	for idx, dataref := range datarefsMap {
 		if _, err := conn.WriteToUDP(makeRREF(1, idx, dataref.name), addr); err != nil {
 			_ = conn.Close()
+			_ = client.Close()
 			return fmt.Errorf("subscribe %s: %w", dataref.name, err)
 		}
 	}
@@ -273,7 +294,7 @@ func startTracker(ctx context.Context, stop context.CancelFunc, wg *sync.WaitGro
 	wg.Add(4)
 	go func() { defer wg.Done(); runReader(ctx, conn, updates, stop) }()
 	go func() { defer wg.Done(); runCoordinator(ctx, updates, snapshots) }()
-	go func() { defer wg.Done(); runSender(ctx, snapshots) }()
+	go func() { defer wg.Done(); runSender(ctx, client, snapshots) }()
 	go func() { defer wg.Done(); cleanupTracker(ctx, addr, conn) }()
 
 	return nil
@@ -283,8 +304,18 @@ func runReader(ctx context.Context, conn *net.UDPConn, updates chan<- datarefTic
 	buf := make([]byte, 2048)
 
 	for {
+		_ = conn.SetReadDeadline(time.Now().Add(readPoll))
+
 		n, src, err := conn.ReadFromUDP(buf)
 		if err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					continue
+				}
+			}
 			if !errors.Is(err, net.ErrClosed) {
 				log.Printf("read failed: %+v", err)
 			}
@@ -346,7 +377,9 @@ func runCoordinator(ctx context.Context, updates <-chan datarefTickUpdate, snaps
 	}
 }
 
-func runSender(ctx context.Context, snapshots <-chan positionData) {
+func runSender(ctx context.Context, client *resty.Client, snapshots <-chan positionData) {
+	defer client.Close()
+
 	pending := make([]positionData, 0, windowSize)
 	sendTicker := time.NewTicker(sendEvery)
 	defer sendTicker.Stop()
@@ -366,7 +399,7 @@ func runSender(ctx context.Context, snapshots <-chan positionData) {
 			if len(pending) == 0 {
 				continue
 			}
-			if err := sendPositions(ctx, pending); err != nil {
+			if err := sendPositions(ctx, client, pending); err != nil {
 				log.Printf("send failed, keeping %d positions for retry: %v", len(pending), err)
 				continue // leave pending intact - retry next tick
 			}
@@ -378,14 +411,14 @@ func runSender(ctx context.Context, snapshots <-chan positionData) {
 
 func cleanupTracker(ctx context.Context, addr *net.UDPAddr, conn *net.UDPConn) {
 	<-ctx.Done()
+	_ = conn.SetWriteDeadline(time.Now().Add(cleanupTimeout))
 	for idx, dataref := range datarefsMap {
 		conn.WriteToUDP(makeRREF(0, idx, dataref.name), addr)
 	}
 	_ = conn.Close() // unblocks runReader (ReadFromUDP → net.ErrClosed)
-	_ = client.Close()
 }
 
-func sendPositions(ctx context.Context, batch []positionData) error {
+func sendPositions(ctx context.Context, client *resty.Client, batch []positionData) error {
 	body, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
