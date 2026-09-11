@@ -46,11 +46,11 @@ func (s *session) poll(ctx context.Context) {
 	case ctx.Err() != nil:
 		return
 	case api.SignedOut(err):
-		log.Printf("the game no longer knows this tracker: %v", err)
+		log.Printf("the API no longer knows this tracker: %v", err)
 		s.onSignedOut()
 	case err != nil:
 		log.Printf("could not read the current flight: %v", err)
-		s.ui.SetNote("cannot reach the game")
+		s.ui.SetNote("cannot reach the Air Transport Magnate website")
 	case item == nil:
 		s.ui.SetNoFlight()
 		s.ui.SetNote("")
@@ -125,17 +125,17 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 		case ctx.Err() != nil:
 			return
 		case api.FailedWith(err, "flight_not_active"):
-			log.Printf("the game says flight %d is over", item.ID)
+			log.Printf("the API says flight %d is over", item.ID)
 			endFlight()
 			return
 		case api.SignedOut(err):
-			log.Printf("the game no longer knows this tracker: %v", err)
+			log.Printf("the API no longer knows this tracker: %v", err)
 			s.onSignedOut()
 			endFlight()
 			return
 		case err != nil:
 			log.Printf("send failed, keeping %d positions for retry: %v", len(pending), err)
-			s.ui.SetNote(fmt.Sprintf("cannot reach the game, holding %d positions", len(pending)))
+			s.ui.SetNote(fmt.Sprintf("cannot reach the Air Transport Magnate website, holding %d positions", len(pending)))
 			return // leave pending intact - retry next tick
 		}
 
@@ -175,7 +175,7 @@ func (s *session) stillFlying(ctx context.Context, item *api.FlightInfo, endFlig
 	switch {
 	case ctx.Err() != nil:
 	case api.SignedOut(err):
-		log.Printf("the game no longer knows this tracker: %v", err)
+		log.Printf("the API no longer knows this tracker: %v", err)
 		s.onSignedOut()
 		endFlight()
 	case err != nil:

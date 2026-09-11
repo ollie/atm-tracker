@@ -1,4 +1,4 @@
-// Package tracker signs in, finds the flight, and keeps the sim and the game talking.
+// Package tracker signs in, finds the flight, and keeps the sim and the API talking.
 package tracker
 
 import (

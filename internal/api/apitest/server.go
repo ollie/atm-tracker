@@ -130,7 +130,7 @@ func (s *Server) WaitForPosts(n int) {
 		select {
 		case <-s.posts:
 		case <-time.After(waitTime):
-			s.t.Fatal("no positions reached the game")
+			s.t.Fatal("no positions reached the API")
 		}
 	}
 }

@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"io"
 	"log"
 	"os"
@@ -18,13 +19,17 @@ import (
 )
 
 const (
-	appID   = "cz.oldrichvetesnik.atmtracker"
+	appID   = "cz.oldrichvetesnik.atm"
 	version = "0.0.1"
 
 	apiUserAgent = "ATM Tracker v" + version
 	logFileName  = "atm-tracker.log"
 	envFileName  = ".env"
+	iconName     = "Icon.png"
 )
+
+//go:embed Icon.png
+var iconPNG []byte
 
 func main() {
 	_ = godotenv.Load(envFileName)
@@ -34,6 +39,7 @@ func main() {
 	defer appStop()
 
 	fyneApp := app.NewWithID(appID)
+	fyneApp.SetIcon(fyne.NewStaticResource(iconName, iconPNG))
 
 	var t *tracker.Tracker
 

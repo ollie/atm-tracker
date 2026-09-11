@@ -142,8 +142,8 @@ func TestWarningsOutliveTheBatchThatRaisedThem(t *testing.T) {
 func TestANoteIsClearedByTheNextSuccess(t *testing.T) {
 	u := testUI(t)
 
-	u.SetNote("cannot reach the game, holding 12 positions")
-	require.Equal(t, "cannot reach the game, holding 12 positions", u.noteValue.Text)
+	u.SetNote("cannot reach the Air Transport Magnate website, holding 12 positions")
+	require.Equal(t, "cannot reach the Air Transport Magnate website, holding 12 positions", u.noteValue.Text)
 
 	u.SetProgress(&api.PositionsResult{Status: "enroute"})
 	assert.Empty(t, u.noteValue.Text, "the batch got through, the note is stale")
@@ -156,7 +156,7 @@ func TestAWarningHidesTheNoteUnderIt(t *testing.T) {
 		Status: "enroute",
 		Events: []api.Event{{Kind: "not_at_departure", OccurredAt: time.Now()}},
 	})
-	u.SetNote("cannot reach the game, holding 12 positions")
+	u.SetNote("cannot reach the Air Transport Magnate website, holding 12 positions")
 
 	assert.Equal(t, warningKinds["not_at_departure"], u.noteValue.Text, "a warning outranks a passing note")
 }

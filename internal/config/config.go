@@ -1,4 +1,4 @@
-// Package config is where the tracker looks for the game.
+// Package config is where the tracker looks for the API and the website.
 package config
 
 import (

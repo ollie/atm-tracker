@@ -184,7 +184,7 @@ func TestAFlightHoldsPositionsTheAPIWouldNotTake(t *testing.T) {
 	require.GreaterOrEqual(t, len(sizes), 2)
 	assert.Positive(t, sizes[0])
 	assert.Greater(t, sizes[1], sizes[0], "a failed send must keep its positions for the retry")
-	assert.Contains(t, h.display.Note(), "cannot reach the game")
+	assert.Contains(t, h.display.Note(), "cannot reach the Air Transport Magnate website")
 }
 
 func TestAFlightUnsubscribesWhenItEnds(t *testing.T) {

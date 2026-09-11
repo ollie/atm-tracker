@@ -14,7 +14,7 @@ func TestBaseURL(t *testing.T) {
 		saved string
 		want  string
 	}{
-		{name: "a fresh install talks to the live game", want: DefaultBaseURL},
+		{name: "a fresh install talks to the live API", want: DefaultBaseURL},
 		{name: "the player pointed it somewhere", saved: "https://atm.example", want: "https://atm.example"},
 		{name: "the environment wins over the preference", env: "http://localhost:3000", saved: "https://atm.example", want: "http://localhost:3000"},
 	}

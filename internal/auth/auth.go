@@ -1,4 +1,4 @@
-// Package auth signs the player in to the game and keeps the token.
+// Package auth signs the player in to the API and keeps the token.
 package auth
 
 import (
@@ -103,7 +103,7 @@ func callbackHandler(state string, results chan<- callbackResult) http.Handler {
 		case query.Get("state") != state:
 			result.err = errStateFailed
 		case query.Get("error") != "":
-			result.err = fmt.Errorf("the game refused the login: %s", query.Get("error"))
+			result.err = fmt.Errorf("the Air Transport Magnate website refused the login: %s", query.Get("error"))
 		case query.Get("code") == "":
 			result.err = errNoCode
 		default:

@@ -67,7 +67,7 @@ func TestSignedOut(t *testing.T) {
 			err:  &url.Error{Op: "Get", Err: &oauth2.RetrieveError{Response: &http.Response{StatusCode: http.StatusBadRequest}}},
 			want: true,
 		},
-		{name: "the game is unreachable", err: &url.Error{Op: "Get", Err: errors.New("connection refused")}, want: false},
+		{name: "the API is unreachable", err: &url.Error{Op: "Get", Err: errors.New("connection refused")}, want: false},
 	}
 
 	for _, c := range cases {

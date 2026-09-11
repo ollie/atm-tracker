@@ -1,10 +1,9 @@
 [Details]
-Name = "No Charter"
-ID = "cz.oldrichvetesnik.nocharter"
-Version = "1.0.0"
-Build = 1
+Icon = "Icon.png"
+Name = "Air Transport Magnate"
+ID = "cz.oldrichvetesnik.atm"
+Version = "0.0.1"
+Build = 2
 
-# All UI work already goes through fyne.Do, so opt in and skip the runtime
-# thread checks. Remove this if UI code starts running off the main goroutine.
 [Migrations]
 fyneDo = true

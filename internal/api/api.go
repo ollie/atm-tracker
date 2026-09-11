@@ -1,4 +1,4 @@
-// Package api asks the game what to fly and tells it what happened.
+// Package api asks the ATM API what to fly and tells it what happened.
 package api
 
 import (
