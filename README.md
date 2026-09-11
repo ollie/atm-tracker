@@ -3,7 +3,7 @@
 To run on dev:
 
 ```sh
-go run cmd/atm-tracker/main.go
+make run
 ```
 
 To test:
@@ -22,4 +22,10 @@ To generate the .app (changes the toml file):
 
 ```sh
 make package
+```
+
+To package for all platforms (check `fyne-cross/dist`):
+
+```sh
+make package-all
 ```

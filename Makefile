@@ -1,9 +1,22 @@
 APP_NAME := atm-tracker
+APP_LABEL := Air Transport Magnate
+APP_ID := cz.oldrichvetesnik.atm
 BUILD_DIR := build
 BINARY := $(BUILD_DIR)/$(APP_NAME)
 MAIN_PKG := ./cmd/$(APP_NAME)
+ICON := $(MAIN_PKG)/Icon.png
+DIST_DIR := fyne-cross/dist
+MAC_DIST := $(DIST_DIR)/darwin-$(shell go env GOARCH)
 
-.PHONY: all test lint fmt run build package clean
+VERSION_FILE := $(MAIN_PKG)/VERSION.txt
+VERSION := $(strip $(shell cat $(VERSION_FILE) 2>/dev/null || echo dev))
+# This doesn't need to change
+BUILD_NUM ?= 1
+
+META_FLAGS := -app-id $(APP_ID) -app-version $(VERSION) -app-build $(BUILD_NUM) \
+	-name "$(APP_LABEL)" -icon $(ICON) -env GOTOOLCHAIN=auto
+
+.PHONY: all test lint fmt run version build package package-mac package-windows package-linux package-all clean
 
 all: build
 
@@ -20,14 +33,42 @@ fmt:
 run:
 	go run $(MAIN_PKG)
 
-build: clean
+version:
+	@echo $(VERSION)
+
+build: clean-build
 	mkdir -p $(BUILD_DIR)
 	go build -ldflags="-s -w" -o $(BINARY) $(MAIN_PKG)
 
-# a double-clickable .app bundle, reading the metadata from FyneApp.toml
-package:
+package package-mac: build
 	@command -v fyne >/dev/null || { echo "fyne not found: go install fyne.io/tools/cmd/fyne@latest"; exit 1; }
-	fyne package --src $(MAIN_PKG)
+	fyne package --executable $(BINARY) --name "$(APP_LABEL)" --app-id $(APP_ID) \
+		--app-version $(VERSION) --app-build $(BUILD_NUM) --icon $(ICON)
+	rm -rf "$(MAC_DIST)/$(APP_LABEL).app" "$(MAC_DIST)/$(APP_LABEL).zip"
+	mkdir -p $(MAC_DIST)
+	mv "$(APP_LABEL).app" $(MAC_DIST)/
+	ditto -c -k --sequesterRsrc --keepParent \
+		"$(MAC_DIST)/$(APP_LABEL).app" "$(MAC_DIST)/$(APP_LABEL).zip"
+	@echo "[✓] Package: \"$(CURDIR)/$(MAC_DIST)/$(APP_LABEL).zip\""
 
-clean:
-	rm -rf $(BUILD_DIR)
+package-windows: check-fyne-cross check-docker
+	fyne-cross windows -arch=amd64 $(META_FLAGS) $(MAIN_PKG)
+
+package-linux: check-fyne-cross check-docker
+	fyne-cross linux -arch=amd64 $(META_FLAGS) $(MAIN_PKG)
+
+package-all: package-mac package-windows package-linux
+
+clean: clean-build
+	rm -rf fyne-cross
+
+clean-build:
+	rm -rf $(BUILD_DIR) "$(APP_LABEL).app"
+
+.PHONY: clean-build check-fyne-cross check-docker
+
+check-fyne-cross:
+	@command -v fyne-cross >/dev/null || { echo "fyne-cross not found: go install github.com/fyne-io/fyne-cross@latest"; exit 1; }
+
+check-docker:
+	@docker info >/dev/null 2>&1 || { echo "docker daemon not running: start Docker Desktop"; exit 1; }

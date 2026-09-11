@@ -2,7 +2,6 @@
 Icon = "Icon.png"
 Name = "Air Transport Magnate"
 ID = "cz.oldrichvetesnik.atm"
-Version = "0.0.1"
 Build = 1
 
 [Migrations]

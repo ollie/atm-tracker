@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"fyne.io/fyne/v2"
@@ -19,14 +20,17 @@ import (
 )
 
 const (
-	appID   = "cz.oldrichvetesnik.atm"
-	version = "0.0.1"
+	appID = "cz.oldrichvetesnik.atm"
 
-	apiUserAgent = "ATM Tracker v" + version
-	logFileName  = "atm-tracker.log"
-	envFileName  = ".env"
-	iconName     = "Icon.png"
+	logFileName = "atm-tracker.log"
+	envFileName = ".env"
+	iconName    = "Icon.png"
 )
+
+//go:embed VERSION.txt
+var versionRaw string
+
+var version = strings.TrimSpace(versionRaw)
 
 //go:embed Icon.png
 var iconPNG []byte
@@ -64,6 +68,7 @@ func main() {
 		defer func() { _ = logFile.Close() }()
 	}
 
+	apiUserAgent := "ATM Tracker v" + version
 	t = tracker.New(fyneApp, u, apiUserAgent)
 	t.Resume()
 
