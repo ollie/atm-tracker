@@ -98,7 +98,7 @@ func testFlight() *api.FlightInfo {
 	return &api.FlightInfo{ID: 42, Departure: api.AirportInfo{Ident: "LKPR"}, Arrival: api.AirportInfo{Ident: "EGLL"}}
 }
 
-func TestAFlightCarriesSimTelemetryToTheGame(t *testing.T) {
+func TestAFlightCarriesSimTelemetryToTheAPI(t *testing.T) {
 	h := startFlight(t, testFlight())
 
 	h.sim.Send(
@@ -113,7 +113,7 @@ func TestAFlightCarriesSimTelemetryToTheGame(t *testing.T) {
 	assert.Equal(t, 42, h.server.LastFlightID())
 
 	sent := h.server.Sent()
-	require.NotEmpty(t, sent, "the game heard nothing from the sim")
+	require.NotEmpty(t, sent, "the API heard nothing from the sim")
 
 	first := sent[0]
 	assert.NotEmpty(t, first.UUID, "the server deduplicates retries on uuid")
@@ -123,7 +123,7 @@ func TestAFlightCarriesSimTelemetryToTheGame(t *testing.T) {
 	assert.Equal(t, telemetry.Kts(194), first.GroundspeedKt, "100 m/s is 194 kt")
 }
 
-func TestAFlightShowsWhatTheGameSaysBack(t *testing.T) {
+func TestAFlightShowsWhatTheAPISaysBack(t *testing.T) {
 	h := startFlight(t, testFlight())
 	occurred := time.Date(2026, time.September, 11, 9, 12, 0, 0, time.UTC)
 	h.server.SetResult(api.PositionsResult{
@@ -146,7 +146,7 @@ func TestAFlightShowsWhatTheGameSaysBack(t *testing.T) {
 	assert.True(t, h.display.Live(), "packets are flowing, the sim pane must say so")
 }
 
-func TestAFlightStopsWhenTheGameSaysItIsOver(t *testing.T) {
+func TestAFlightStopsWhenTheAPISaysItIsOver(t *testing.T) {
 	h := startFlight(t, testFlight())
 	h.server.SetResult(api.PositionsResult{Status: "completed"})
 
@@ -158,16 +158,16 @@ func TestAFlightStopsWhenTheGameSaysItIsOver(t *testing.T) {
 	assert.Equal(t, "completed", h.display.Progress().Status)
 }
 
-func TestAFlightStopsWhenTheGameRejectsTheBatch(t *testing.T) {
+func TestAFlightStopsWhenTheAPIRejectsTheBatch(t *testing.T) {
 	h := startFlight(t, testFlight())
 	h.server.Fail(func(w http.ResponseWriter) bool { return apitest.ValidationError(w, "flight_not_active") })
 
 	h.sim.Send(xplanetest.Update{Index: 15, Value: 4200})
 
-	h.waitForEnd("the tracker kept sending to a flight the game had closed")
+	h.waitForEnd("the tracker kept sending to a flight the API had closed")
 }
 
-func TestAFlightHoldsPositionsTheGameWouldNotTake(t *testing.T) {
+func TestAFlightHoldsPositionsTheAPIWouldNotTake(t *testing.T) {
 	h := startFlight(t, testFlight())
 	h.server.Fail(func(w http.ResponseWriter) bool {
 		w.WriteHeader(http.StatusInternalServerError)
