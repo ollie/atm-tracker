@@ -77,7 +77,7 @@ func main() {
 }
 
 func startLogging(u *ui.UI) *os.File {
-	writers := []io.Writer{os.Stderr, u.LogWriter()}
+	writers := []io.Writer{os.Stderr}
 
 	file, path := openLogFile()
 	if file != nil {
@@ -85,6 +85,7 @@ func startLogging(u *ui.UI) *os.File {
 	}
 
 	log.SetOutput(io.MultiWriter(writers...))
+	u.SetLogFile(path)
 
 	if path == "" {
 		log.Printf("could not open %s, logging to screen only", logFileName)

@@ -3,7 +3,8 @@ package ui
 
 import (
 	"fmt"
-	"io"
+	"log"
+	"net/url"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -14,7 +15,6 @@ import (
 )
 
 const (
-	logLines    = 500
 	zuluLayout  = "15:04:05Z"
 	buttonWidth = 150
 	buttonHigh  = 40
@@ -37,6 +37,8 @@ type Actions struct {
 type UI struct {
 	Win fyne.Window
 
+	app fyne.App
+
 	flightValue  *widget.Label
 	statusValue  *widget.Label
 	targetsValue *widget.Label
@@ -47,8 +49,9 @@ type UI struct {
 	loginButton  *widget.Button
 	logoutButton *widget.Button
 
-	logText   *widget.Label
-	logScroll *container.Scroll
+	logNote   *widget.Label
+	logButton *widget.Button
+	logPath   string
 
 	note    string
 	warning string
@@ -57,18 +60,19 @@ type UI struct {
 func New(app fyne.App, actions Actions) *UI {
 	u := &UI{
 		Win:          app.NewWindow("Air Transport Magnate Tracker"),
+		app:          app,
 		flightValue:  widget.NewLabel(""),
 		statusValue:  widget.NewLabel(""),
 		targetsValue: widget.NewLabel(""),
 		simValue:     widget.NewLabel(""),
 		eventValue:   widget.NewLabel(""),
 		noteValue:    widget.NewLabel(""),
-		logText:      widget.NewLabel(""),
+		logNote:      widget.NewLabel(""),
 	}
 
 	u.noteValue.Importance = widget.WarningImportance
-	u.logText.Wrapping = fyne.TextWrapWord
-	u.logScroll = container.NewVScroll(u.logText)
+	u.logButton = widget.NewButton("Open log", u.openLog)
+	u.logButton.Hide()
 
 	u.loginButton = widget.NewButton("Log in", actions.SignIn)
 	u.logoutButton = widget.NewButton("Log out", actions.SignOut)
@@ -86,9 +90,16 @@ func New(app fyne.App, actions Actions) *UI {
 		u.noteValue,
 	)
 
+	logPane := container.NewVBox(
+		container.New(layout.NewFormLayout(),
+			fieldLabel("Log file"), u.logNote,
+		),
+		container.NewHBox(u.logButton),
+	)
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Flight", container.NewPadded(flightPane)),
-		container.NewTabItem("Log", u.logScroll),
+		container.NewTabItem("Log", container.NewPadded(logPane)),
 	)
 
 	buttons := container.NewGridWrap(
@@ -231,24 +242,31 @@ func statusText(status string) string {
 	return strings.ReplaceAll(status, "_", " ")
 }
 
-func (u *UI) LogWriter() io.Writer {
-	return &logWriter{ui: u}
-}
+func (u *UI) SetLogFile(path string) {
+	fyne.Do(func() {
+		u.logPath = path
 
-type logWriter struct {
-	ui *UI
-}
-
-func (w *logWriter) Write(p []byte) (int, error) {
-	line := string(p)
-	fyne.Do(func() { // on UI thread, doesn't block logger
-		lines := append(strings.Split(w.ui.logText.Text, "\n"), strings.TrimRight(line, "\n"))
-		if len(lines) > logLines {
-			lines = lines[len(lines)-logLines:]
+		if path == "" {
+			u.logNote.SetText("could not open the log file, the log is on the terminal only")
+			u.logButton.Hide()
+			return
 		}
-		w.ui.logText.SetText(strings.Join(lines, "\n"))
-		w.ui.logScroll.ScrollToBottom()
-	})
 
-	return len(p), nil
+		u.logNote.SetText(path)
+		u.logButton.Show()
+	})
+}
+
+func (u *UI) openLog() {
+	if u.logPath == "" {
+		return
+	}
+
+	if err := u.app.OpenURL(logURL(u.logPath)); err != nil {
+		log.Printf("could not open %s: %v", u.logPath, err)
+	}
+}
+
+func logURL(path string) *url.URL {
+	return &url.URL{Scheme: "file", Path: path}
 }

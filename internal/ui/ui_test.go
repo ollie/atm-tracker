@@ -1,11 +1,9 @@
 package ui
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -161,22 +159,27 @@ func TestAWarningHidesTheNoteUnderIt(t *testing.T) {
 	assert.Equal(t, warningKinds["not_at_departure"], u.noteValue.Text, "a warning outranks a passing note")
 }
 
-func TestLogWriterKeepsTheTailOfTheLog(t *testing.T) {
+func TestTheLogTabOffersToOpenTheLogFile(t *testing.T) {
 	u := testUI(t)
-	w := u.LogWriter()
 
-	seeded := make([]string, logLines)
-	for i := range seeded {
-		seeded[i] = fmt.Sprintf("line %d", i)
-	}
-	u.logText.SetText(strings.Join(seeded, "\n"))
+	u.SetLogFile("/tmp/atm-tracker.log")
 
-	n, err := w.Write([]byte("flying\n"))
-	require.NoError(t, err)
-	assert.Equal(t, len("flying\n"), n, "the logger must see every byte written")
+	assert.True(t, u.logButton.Visible())
+	assert.Equal(t, "/tmp/atm-tracker.log", u.logNote.Text)
+	assert.Equal(t, "/tmp/atm-tracker.log", u.logPath, "the button opens what it stored, not what it displayed")
+}
 
-	lines := strings.Split(u.logText.Text, "\n")
-	assert.Len(t, lines, logLines, "a long flight must not grow the log pane without bound")
-	assert.Equal(t, "line 1", lines[0], "the oldest line is the one dropped")
-	assert.Equal(t, "flying", lines[len(lines)-1])
+func TestTheLogTabSaysWhenThereIsNoFile(t *testing.T) {
+	u := testUI(t)
+
+	u.SetLogFile("")
+
+	assert.False(t, u.logButton.Visible(), "an empty path would open the working directory")
+	assert.Contains(t, u.logNote.Text, "terminal only")
+
+	test.Tap(u.logButton)
+}
+
+func TestTheLogFileIsOpenedAsAURL(t *testing.T) {
+	assert.Equal(t, "file:///tmp/atm-tracker.log", logURL("/tmp/atm-tracker.log").String(), "a bare path opens nothing")
 }
