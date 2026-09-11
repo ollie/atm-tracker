@@ -129,9 +129,11 @@ func callbackPage(heading, message string) string {
 	return fmt.Sprintf(`<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>%s — ATM Tracker</title></head>
-<body style="font-family: system-ui, sans-serif; margin: 4rem auto; max-width: 30rem">
+<body style="font-family: system-ui, sans-serif; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center">
+<div style="width: 30rem; padding-bottom: 15rem">
 <h1>%s</h1>
 <p>%s</p>
+</div>
 </body>
 </html>
 `, heading, heading, message)
