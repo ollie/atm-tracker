@@ -160,7 +160,7 @@ func (u *UI) StartFlight(item *api.FlightInfo) {
 	u.SetFlight(item)
 
 	fyne.Do(func() {
-		u.eventValue.SetText("—")
+		u.eventValue.SetText("–")
 		u.resetNotes()
 	})
 }
@@ -177,10 +177,10 @@ func (u *UI) SetFlight(item *api.FlightInfo) {
 }
 
 func (u *UI) resetFlight() {
-	u.statusValue.SetText("—")
-	u.targetsValue.SetText("—")
+	u.statusValue.SetText("–")
+	u.targetsValue.SetText("–")
 	u.simValue.SetText("not tracking")
-	u.eventValue.SetText("—")
+	u.eventValue.SetText("–")
 }
 
 func (u *UI) resetNotes() {

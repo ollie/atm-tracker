@@ -63,7 +63,7 @@ func TestStartFlightShowsTheRouteAndTargets(t *testing.T) {
 	assert.Equal(t, "LKPR → EGLL", u.flightValue.Text)
 	assert.Equal(t, "boarding", u.statusValue.Text)
 	assert.Equal(t, "1200 kg payload, 800 kg fuel", u.targetsValue.Text)
-	assert.Equal(t, "—", u.eventValue.Text)
+	assert.Equal(t, "–", u.eventValue.Text)
 }
 
 func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
@@ -73,8 +73,8 @@ func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	u.SetNoFlight()
 
 	assert.Equal(t, "no flight to fly", u.flightValue.Text)
-	assert.Equal(t, "—", u.statusValue.Text)
-	assert.Equal(t, "—", u.targetsValue.Text)
+	assert.Equal(t, "–", u.statusValue.Text)
+	assert.Equal(t, "–", u.targetsValue.Text)
 	assert.Equal(t, "not tracking", u.simValue.Text)
 }
 
