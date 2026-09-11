@@ -1,0 +1,79 @@
+version: "2"
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+    - revive
+    - gocritic
+    - misspell
+    - prealloc
+    - unconvert
+    - bodyclose
+    - errorlint
+    - copyloopvar
+    - intrange
+    - nakedret
+    - noctx
+    - nolintlint
+    - wastedassign
+  settings:
+    govet:
+      enable:
+        - shadow
+        - nilness
+        - unusedwrite
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1020
+        - -ST1021
+    revive:
+      rules:
+        - name: var-naming
+        - name: package-comments
+        - name: error-return
+        - name: error-naming
+        - name: if-return
+        - name: unexported-return
+        - name: time-naming
+        - name: errorf
+    gosec:
+      excludes:
+        - G104
+  exclusions:
+    rules:
+      # apitest and xplanetest are test code that happens to live in its own package
+      - path: (_test\.go|apitest/|xplanetest/)
+        linters:
+          - errcheck
+          - gosec
+          - noctx
+      # storing the token is the point of auth.Store.Save
+      - path: internal/auth/tokens\.go
+        text: G117
+        linters:
+          - gosec
+      # the log file path is a constant
+      - path: cmd/atm-tracker/main\.go
+        text: G304
+        linters:
+          - gosec
+      # RREF puts a 4-byte little-endian int on the wire; the conversion is the protocol
+      - path: internal/xplane/
+        text: G115
+        linters:
+          - gosec
+formatters:
+  enable:
+    - gofumpt
+    - goimports

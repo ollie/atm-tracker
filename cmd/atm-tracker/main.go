@@ -1,0 +1,104 @@
+// Command atm-tracker streams X-Plane telemetry to Air Transport Magnate.
+package main
+
+import (
+	"context"
+	"io"
+	"log"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"github.com/joho/godotenv"
+	"github.com/ollie/atm-tracker/internal/tracker"
+	"github.com/ollie/atm-tracker/internal/ui"
+)
+
+const (
+	appID   = "cz.oldrichvetesnik.atmtracker"
+	version = "0.0.1"
+
+	apiUserAgent = "ATM Tracker v" + version
+	logFileName  = "atm-tracker.log"
+	envFileName  = ".env"
+)
+
+func main() {
+	_ = godotenv.Load(envFileName)
+
+	// Ctrl+C, SIGTERM quits the app
+	appCtx, appStop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer appStop()
+
+	fyneApp := app.NewWithID(appID)
+
+	var t *tracker.Tracker
+
+	quit := func() {
+		log.Println("quitting")
+		log.SetOutput(os.Stderr)
+
+		go func() {
+			t.Shutdown()
+			fyne.Do(fyneApp.Quit)
+		}()
+	}
+
+	u := ui.New(fyneApp, ui.Actions{
+		SignIn:  func() { t.SignIn() },
+		SignOut: func() { t.SignOut() },
+		Quit:    quit,
+	})
+
+	logFile := startLogging(u)
+	if logFile != nil {
+		defer func() { _ = logFile.Close() }()
+	}
+
+	t = tracker.New(fyneApp, u, apiUserAgent)
+	t.Resume()
+
+	go func() {
+		<-appCtx.Done()
+		quit()
+	}()
+
+	u.Win.ShowAndRun()
+	log.Println("stopped")
+}
+
+func startLogging(u *ui.UI) *os.File {
+	writers := []io.Writer{os.Stderr, u.LogWriter()}
+
+	file, path := openLogFile()
+	if file != nil {
+		writers = append(writers, file)
+	}
+
+	log.SetOutput(io.MultiWriter(writers...))
+
+	if path == "" {
+		log.Printf("could not open %s, logging to screen only", logFileName)
+	} else {
+		log.Printf("logging to %s", path)
+	}
+
+	return file
+}
+
+func openLogFile() (*os.File, string) {
+	path, err := filepath.Abs(logFileName)
+	if err != nil {
+		path = logFileName
+	}
+
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, ""
+	}
+
+	return file, path
+}

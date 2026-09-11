@@ -1,0 +1,4 @@
+/.env
+/*.log
+/build
+/atm-tracker.app
