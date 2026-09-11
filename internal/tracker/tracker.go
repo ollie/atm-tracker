@@ -50,6 +50,7 @@ type Tracker struct {
 	app       fyne.App
 	ui        Display
 	base      string
+	appBase   string
 	userAgent string
 	store     *auth.Store
 
@@ -64,13 +65,18 @@ func New(app fyne.App, u Display, userAgent string) *Tracker {
 		app:       app,
 		ui:        u,
 		base:      config.BaseURL(app.Preferences()),
+		appBase:   config.AppURL(app.Preferences()),
 		userAgent: userAgent,
 		store:     &auth.Store{Prefs: app.Preferences()},
 	}
 }
 
 func (t *Tracker) Resume() {
-	log.Printf("talking to %s", t.base)
+	if t.appBase == t.base {
+		log.Printf("talking to %s", t.base)
+	} else {
+		log.Printf("talking to %s, signing in at %s", t.base, t.appBase)
+	}
 
 	token := t.store.Load()
 	if token == nil {
@@ -85,7 +91,7 @@ func (t *Tracker) SignIn() {
 	t.ui.SigningIn()
 
 	go func() {
-		token, err := auth.Login(context.Background(), t.app, t.base)
+		token, err := auth.Login(context.Background(), t.app, t.base, t.appBase)
 		if err != nil {
 			log.Printf("log in failed: %v", err)
 			t.ui.SignedOut()

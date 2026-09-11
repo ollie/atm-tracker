@@ -64,7 +64,7 @@ func (s *Store) Clear() {
 func (s *Store) Source(ctx context.Context, base string, token *oauth2.Token) oauth2.TokenSource {
 	return &savingTokenSource{
 		store: s,
-		inner: Config(base, "").TokenSource(ctx, token),
+		inner: Config(base, "", "").TokenSource(ctx, token),
 	}
 }
 

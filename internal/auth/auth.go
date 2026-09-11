@@ -20,6 +20,8 @@ import (
 const (
 	ClientID = "atm-tracker"
 
+	ConsentPath = "/app/oauth/authorize"
+
 	loopbackAddr      = "127.0.0.1:0" // `:0` will give us any port available.
 	loginTimeout      = 5 * time.Minute
 	readHeaderTimeout = 10 * time.Second
@@ -31,13 +33,13 @@ var (
 	errStateFailed = errors.New("the browser came back with a state we did not send")
 )
 
-func Config(base, redirectURL string) *oauth2.Config {
+func Config(apiBase, appBase, redirectURL string) *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:    ClientID,
 		RedirectURL: redirectURL,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:   base + "/api/v1/oauth/authorize",
-			TokenURL:  base + "/api/v1/oauth/token",
+			AuthURL:   appBase + ConsentPath,
+			TokenURL:  apiBase + "/api/v1/oauth/token",
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
 	}
@@ -48,7 +50,7 @@ type callbackResult struct {
 	err  error
 }
 
-func Login(ctx context.Context, app fyne.App, base string) (*oauth2.Token, error) {
+func Login(ctx context.Context, app fyne.App, apiBase, appBase string) (*oauth2.Token, error) {
 	var config net.ListenConfig
 
 	listener, err := config.Listen(ctx, "tcp", loopbackAddr)
@@ -62,7 +64,7 @@ func Login(ctx context.Context, app fyne.App, base string) (*oauth2.Token, error
 		return nil, err
 	}
 
-	conf := Config(base, "http://"+listener.Addr().String()+"/callback")
+	conf := Config(apiBase, appBase, "http://"+listener.Addr().String()+"/callback")
 	verifier := oauth2.GenerateVerifier()
 
 	results := make(chan callbackResult, 1)
