@@ -28,6 +28,7 @@ type FlightInfo struct {
 	Arrival         AirportInfo `json:"arrival"`
 	TargetPayloadKg int         `json:"targetPayloadKg"`
 	TargetFuelKg    int         `json:"targetFuelKg"`
+	WeightUnit      string      `json:"weightUnit"`
 }
 
 type Event struct {

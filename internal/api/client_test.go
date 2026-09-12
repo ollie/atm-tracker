@@ -41,6 +41,7 @@ func TestFlightReadsTheCurrentFlight(t *testing.T) {
 		Arrival:         api.AirportInfo{Ident: "EGLL", Name: "Heathrow"},
 		TargetPayloadKg: 1200,
 		TargetFuelKg:    800,
+		WeightUnit:      "lb",
 	})
 
 	item, err := newClient(t, server).Flight(t.Context())
@@ -52,6 +53,7 @@ func TestFlightReadsTheCurrentFlight(t *testing.T) {
 	assert.Equal(t, "EGLL", item.Arrival.Ident)
 	assert.Equal(t, 1200, item.TargetPayloadKg)
 	assert.Equal(t, 800, item.TargetFuelKg)
+	assert.Equal(t, "lb", item.WeightUnit)
 
 	assert.Equal(t, "Bearer test-token", server.LastAuth())
 }

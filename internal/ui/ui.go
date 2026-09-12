@@ -4,6 +4,7 @@ package ui
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/url"
 	"strings"
 
@@ -20,6 +21,9 @@ const (
 	buttonHigh  = 40
 	windowWidth = 800
 	windowHigh  = 600
+	lbPerKg     = 2.20462262185
+	unitKg      = "kg"
+	unitLb      = "lb"
 )
 
 var warningKinds = map[string]string{
@@ -167,13 +171,32 @@ func (u *UI) StartFlight(item *api.FlightInfo) {
 
 func (u *UI) SetFlight(item *api.FlightInfo) {
 	route := fmt.Sprintf("%s → %s", item.Departure.Ident, item.Arrival.Ident)
-	targets := fmt.Sprintf("%d kg payload, %d kg fuel", item.TargetPayloadKg, item.TargetFuelKg)
+	targets := targetsText(item)
 
 	fyne.Do(func() {
 		u.flightValue.SetText(route)
 		u.statusValue.SetText(statusText(item.Status))
 		u.targetsValue.SetText(targets)
 	})
+}
+
+func targetsText(item *api.FlightInfo) string {
+	unit := unitKg
+	if item.WeightUnit == unitLb {
+		unit = unitLb
+	}
+
+	return fmt.Sprintf("%d %s payload, %d %s fuel",
+		weightIn(unit, item.TargetPayloadKg), unit,
+		weightIn(unit, item.TargetFuelKg), unit)
+}
+
+func weightIn(unit string, kg int) int {
+	if unit == unitLb {
+		return int(math.Round(float64(kg) * lbPerKg))
+	}
+
+	return kg
 }
 
 func (u *UI) resetFlight() {

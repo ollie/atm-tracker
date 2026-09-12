@@ -66,6 +66,35 @@ func TestStartFlightShowsTheRouteAndTargets(t *testing.T) {
 	assert.Equal(t, "–", u.eventValue.Text)
 }
 
+func TestStartFlightShowsTheTargetsInThePlayersUnit(t *testing.T) {
+	tests := []struct {
+		name  string
+		unit  string
+		wants string
+	}{
+		{"pounds", "lb", "2646 lb payload, 1764 lb fuel"},
+		{"kilograms", "kg", "1200 kg payload, 800 kg fuel"},
+		{"a unit this build does not know", "stone", "1200 kg payload, 800 kg fuel"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			u := testUI(t)
+
+			u.StartFlight(&api.FlightInfo{
+				Status:          "boarding",
+				Departure:       api.AirportInfo{Ident: "LKPR"},
+				Arrival:         api.AirportInfo{Ident: "EGLL"},
+				TargetPayloadKg: 1200,
+				TargetFuelKg:    800,
+				WeightUnit:      test.unit,
+			})
+
+			assert.Equal(t, test.wants, u.targetsValue.Text)
+		})
+	}
+}
+
 func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	u := testUI(t)
 	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Ident: "LKPR"}, Arrival: api.AirportInfo{Ident: "EGLL"}})
