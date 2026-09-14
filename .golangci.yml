@@ -63,6 +63,11 @@ linters:
         text: G117
         linters:
           - gosec
+      # TokenPath is the token endpoint's URL path, not a credential
+      - path: internal/auth/auth\.go
+        text: G101
+        linters:
+          - gosec
       # the log file path is a constant
       - path: cmd/atm-tracker/main\.go
         text: G304

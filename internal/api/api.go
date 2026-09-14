@@ -14,7 +14,11 @@ import (
 	"resty.dev/v3"
 )
 
-const requestTimeout = 10 * time.Second
+const (
+	RevokePath = "/oauth/revoke"
+
+	requestTimeout = 10 * time.Second
+)
 
 type AirportInfo struct {
 	Ident string `json:"ident"`
@@ -101,17 +105,19 @@ func SignedOut(err error) bool {
 }
 
 type Client struct {
-	rest *resty.Client
+	rest      *resty.Client
+	revokeURL string
 }
 
 func New(base, userAgent string, tokens oauth2.TokenSource) *Client {
 	return &Client{
 		rest: resty.New().
-			SetBaseURL(base+"/api/v1").
+			SetBaseURL(base+"/api/tracker/v1").
 			SetHeader("User-Agent", userAgent).
 			SetHeader("Content-Type", "application/json").
 			SetTimeout(requestTimeout).
 			SetTransport(&oauth2.Transport{Source: tokens}),
+		revokeURL: base + RevokePath,
 	}
 }
 
@@ -122,7 +128,7 @@ func (c *Client) Close() {
 func (c *Client) Flight(ctx context.Context) (*FlightInfo, error) {
 	var item FlightInfo
 
-	res, err := c.rest.R().SetContext(ctx).SetResult(&item).Get("/tracker/flight")
+	res, err := c.rest.R().SetContext(ctx).SetResult(&item).Get("/flight")
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}
@@ -143,7 +149,7 @@ func (c *Client) SendPositions(ctx context.Context, flightID int, batch []teleme
 		SetContext(ctx).
 		SetBody(PositionsRequest{FlightID: flightID, Positions: batch}).
 		SetResult(&result).
-		Post("/tracker/positions")
+		Post("/positions")
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}
@@ -155,7 +161,7 @@ func (c *Client) SendPositions(ctx context.Context, flightID int, batch []teleme
 }
 
 func (c *Client) Revoke(ctx context.Context) error {
-	res, err := c.rest.R().SetContext(ctx).Post("/oauth/revoke")
+	res, err := c.rest.R().SetContext(ctx).Post(c.revokeURL)
 	if err != nil {
 		return fmt.Errorf("request: %w", err)
 	}

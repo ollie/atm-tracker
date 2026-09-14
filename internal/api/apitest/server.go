@@ -46,9 +46,9 @@ func NewServer(t *testing.T) *Server {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/tracker/flight", s.handleFlight)
-	mux.HandleFunc("POST /api/v1/tracker/positions", s.handlePositions)
-	mux.HandleFunc("POST /api/v1/oauth/revoke", s.handleRevoke)
+	mux.HandleFunc("GET /api/tracker/v1/flight", s.handleFlight)
+	mux.HandleFunc("POST /api/tracker/v1/positions", s.handlePositions)
+	mux.HandleFunc("POST /oauth/revoke", s.handleRevoke)
 
 	httpServer := httptest.NewServer(mux)
 	s.URL = httpServer.URL

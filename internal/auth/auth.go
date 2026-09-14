@@ -21,6 +21,7 @@ const (
 	ClientID = "atm-tracker"
 
 	ConsentPath = "/app/oauth/authorize"
+	TokenPath   = "/oauth/token"
 
 	loopbackAddr      = "127.0.0.1:0" // `:0` will give us any port available.
 	loginTimeout      = 5 * time.Minute
@@ -39,7 +40,7 @@ func Config(apiBase, appBase, redirectURL string) *oauth2.Config {
 		RedirectURL: redirectURL,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:   appBase + ConsentPath,
-			TokenURL:  apiBase + "/api/v1/oauth/token",
+			TokenURL:  apiBase + TokenPath,
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
 	}
