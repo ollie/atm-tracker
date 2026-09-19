@@ -63,6 +63,7 @@ func TestStartFlightShowsTheRouteAndTargets(t *testing.T) {
 	assert.Equal(t, "LKPR → EGLL", u.flightValue.Text)
 	assert.Equal(t, "boarding", u.statusValue.Text)
 	assert.Equal(t, "1200 kg payload, 800 kg fuel", u.targetsValue.Text)
+	assert.Equal(t, "–", u.actualValue.Text, "the previous flight's load must not linger until the first snapshot")
 	assert.Equal(t, "–", u.eventValue.Text)
 }
 
@@ -95,15 +96,44 @@ func TestStartFlightShowsTheTargetsInThePlayersUnit(t *testing.T) {
 	}
 }
 
+func TestTheActualLoadRendersInTheFlightsUnit(t *testing.T) {
+	tests := []struct {
+		name  string
+		unit  string
+		wants string
+	}{
+		{"pounds", "lb", "2536 lb payload, 1719 lb fuel"},
+		{"kilograms", "kg", "1150 kg payload, 780 kg fuel"},
+		{"a unit this build does not know", "stone", "1150 kg payload, 780 kg fuel"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			u := testUI(t)
+
+			u.StartFlight(&api.FlightInfo{
+				Departure:  api.AirportInfo{Ident: "LKPR"},
+				Arrival:    api.AirportInfo{Ident: "EGLL"},
+				WeightUnit: test.unit,
+			})
+			u.SetActual(1150.4, 779.6)
+
+			assert.Equal(t, test.wants, u.actualValue.Text)
+		})
+	}
+}
+
 func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	u := testUI(t)
 	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Ident: "LKPR"}, Arrival: api.AirportInfo{Ident: "EGLL"}})
+	u.SetActual(1150, 780)
 
 	u.SetNoFlight()
 
 	assert.Equal(t, "no flight to fly", u.flightValue.Text)
 	assert.Equal(t, "–", u.statusValue.Text)
 	assert.Equal(t, "–", u.targetsValue.Text)
+	assert.Equal(t, "–", u.actualValue.Text)
 	assert.Equal(t, "not tracking", u.simValue.Text)
 }
 

@@ -22,9 +22,15 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+type actualLoad struct {
+	payloadKg float32
+	fuelKg    float32
+}
+
 type spyDisplay struct {
 	mu       sync.Mutex
 	live     bool
+	actual   actualLoad
 	note     string
 	progress *api.PositionsResult
 	flight   *api.FlightInfo
@@ -57,6 +63,12 @@ func (d *spyDisplay) SetLive(live bool) {
 	d.live = live
 }
 
+func (d *spyDisplay) SetActual(payloadKg, fuelKg float32) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.actual = actualLoad{payloadKg: payloadKg, fuelKg: fuelKg}
+}
+
 func (d *spyDisplay) SetNote(note string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -73,6 +85,12 @@ func (d *spyDisplay) Live() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.live
+}
+
+func (d *spyDisplay) Actual() actualLoad {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.actual
 }
 
 func (d *spyDisplay) Note() string {

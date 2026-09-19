@@ -123,6 +123,22 @@ func TestAFlightCarriesSimTelemetryToTheAPI(t *testing.T) {
 	assert.Equal(t, telemetry.Kts(194), first.GroundspeedKt, "100 m/s is 194 kt")
 }
 
+func TestAFlightShowsWhatTheAircraftIsCarrying(t *testing.T) {
+	h := startFlight(t, testFlight())
+
+	h.sim.Send(
+		xplanetest.Update{Index: 14, Value: 1150},
+		xplanetest.Update{Index: 15, Value: 780},
+	)
+
+	h.server.WaitForPosts(1)
+	h.settle()
+
+	actual := h.display.Actual()
+	assert.InDelta(t, 1150, actual.payloadKg, 0.001, "the player cannot see the load the sim reported")
+	assert.InDelta(t, 780, actual.fuelKg, 0.001)
+}
+
 func TestAFlightShowsWhatTheAPISaysBack(t *testing.T) {
 	h := startFlight(t, testFlight())
 	occurred := time.Date(2026, time.September, 11, 9, 12, 0, 0, time.UTC)

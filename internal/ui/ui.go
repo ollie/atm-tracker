@@ -46,6 +46,7 @@ type UI struct {
 	flightValue  *widget.Label
 	statusValue  *widget.Label
 	targetsValue *widget.Label
+	actualValue  *widget.Label
 	simValue     *widget.Label
 	eventValue   *widget.Label
 	noteValue    *widget.Label
@@ -57,6 +58,7 @@ type UI struct {
 	logButton *widget.Button
 	logPath   string
 
+	unit    string
 	note    string
 	warning string
 }
@@ -68,10 +70,12 @@ func New(app fyne.App, actions Actions) *UI {
 		flightValue:  widget.NewLabel(""),
 		statusValue:  widget.NewLabel(""),
 		targetsValue: widget.NewLabel(""),
+		actualValue:  widget.NewLabel(""),
 		simValue:     widget.NewLabel(""),
 		eventValue:   widget.NewLabel(""),
 		noteValue:    widget.NewLabel(""),
 		logNote:      widget.NewLabel(""),
+		unit:         unitKg,
 	}
 
 	u.noteValue.Importance = widget.WarningImportance
@@ -88,6 +92,7 @@ func New(app fyne.App, actions Actions) *UI {
 			fieldLabel("Flight"), u.flightValue,
 			fieldLabel("Status"), u.statusValue,
 			fieldLabel("Targets"), u.targetsValue,
+			fieldLabel("Actual"), u.actualValue,
 			fieldLabel("Sim"), u.simValue,
 			fieldLabel("Last event"), u.eventValue,
 		),
@@ -165,15 +170,18 @@ func (u *UI) StartFlight(item *api.FlightInfo) {
 
 	fyne.Do(func() {
 		u.eventValue.SetText("–")
+		u.actualValue.SetText("–")
 		u.resetNotes()
 	})
 }
 
 func (u *UI) SetFlight(item *api.FlightInfo) {
 	route := fmt.Sprintf("%s → %s", item.Departure.Ident, item.Arrival.Ident)
+	unit := unitOf(item.WeightUnit)
 	targets := targetsText(item)
 
 	fyne.Do(func() {
+		u.unit = unit
 		u.flightValue.SetText(route)
 		u.statusValue.SetText(statusText(item.Status))
 		u.targetsValue.SetText(targets)
@@ -181,27 +189,35 @@ func (u *UI) SetFlight(item *api.FlightInfo) {
 }
 
 func targetsText(item *api.FlightInfo) string {
-	unit := unitKg
-	if item.WeightUnit == unitLb {
-		unit = unitLb
-	}
-
-	return fmt.Sprintf("%d %s payload, %d %s fuel",
-		weightIn(unit, item.TargetPayloadKg), unit,
-		weightIn(unit, item.TargetFuelKg), unit)
+	return loadText(unitOf(item.WeightUnit), float64(item.TargetPayloadKg), float64(item.TargetFuelKg))
 }
 
-func weightIn(unit string, kg int) int {
+func loadText(unit string, payloadKg, fuelKg float64) string {
+	return fmt.Sprintf("%d %s payload, %d %s fuel",
+		weightIn(unit, payloadKg), unit,
+		weightIn(unit, fuelKg), unit)
+}
+
+func unitOf(unit string) string {
 	if unit == unitLb {
-		return int(math.Round(float64(kg) * lbPerKg))
+		return unitLb
 	}
 
-	return kg
+	return unitKg
+}
+
+func weightIn(unit string, kg float64) int {
+	if unit == unitLb {
+		return int(math.Round(kg * lbPerKg))
+	}
+
+	return int(math.Round(kg))
 }
 
 func (u *UI) resetFlight() {
 	u.statusValue.SetText("–")
 	u.targetsValue.SetText("–")
+	u.actualValue.SetText("–")
 	u.simValue.SetText("not tracking")
 	u.eventValue.SetText("–")
 }
@@ -218,6 +234,10 @@ func (u *UI) SetLive(live bool) {
 	}
 
 	fyne.Do(func() { u.simValue.SetText(text) })
+}
+
+func (u *UI) SetActual(payloadKg, fuelKg float32) {
+	fyne.Do(func() { u.actualValue.SetText(loadText(u.unit, float64(payloadKg), float64(fuelKg))) })
 }
 
 func (u *UI) SetNote(note string) {

@@ -156,6 +156,7 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 
 		case p := <-snapshots:
 			pending = append(pending, p.Data)
+			s.ui.SetActual(p.Data.PayloadKg, p.Data.FuelKg)
 			if len(pending) > windowSize {
 				pending = pending[1:] // cap: drop oldest unsent
 			}

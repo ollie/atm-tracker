@@ -30,6 +30,7 @@ type Display interface {
 	StartFlight(item *api.FlightInfo)
 	SetFlight(item *api.FlightInfo)
 	SetLive(live bool)
+	SetActual(payloadKg, fuelKg float32)
 	SetNote(note string)
 	SetProgress(result *api.PositionsResult)
 }
