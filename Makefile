@@ -6,7 +6,18 @@ BINARY := $(BUILD_DIR)/$(APP_NAME)
 MAIN_PKG := ./cmd/$(APP_NAME)
 ICON := $(MAIN_PKG)/Icon.png
 DIST_DIR := fyne-cross/dist
-MAC_DIST := $(DIST_DIR)/darwin-$(shell go env GOARCH)
+
+MAC_ARCH := $(shell go env GOARCH)
+WINDOWS_ARCH := amd64
+LINUX_ARCH := amd64
+
+MAC_DIST := $(DIST_DIR)/darwin-$(MAC_ARCH)
+WINDOWS_DIST := $(DIST_DIR)/windows-$(WINDOWS_ARCH)
+LINUX_DIST := $(DIST_DIR)/linux-$(LINUX_ARCH)
+
+MAC_ARCHIVE := $(MAC_DIST)/$(APP_LABEL)-mac-$(MAC_ARCH).zip
+WINDOWS_ARCHIVE := $(WINDOWS_DIST)/$(APP_LABEL)-windows-$(WINDOWS_ARCH).zip
+LINUX_ARCHIVE := $(LINUX_DIST)/$(APP_LABEL)-linux-$(LINUX_ARCH).tar.xz
 
 VERSION_FILE := $(MAIN_PKG)/VERSION.txt
 VERSION := $(strip $(shell cat $(VERSION_FILE) 2>/dev/null || echo dev))
@@ -44,18 +55,22 @@ package package-mac: build
 	@command -v fyne >/dev/null || { echo "fyne not found: go install fyne.io/tools/cmd/fyne@latest"; exit 1; }
 	fyne package --executable $(BINARY) --name "$(APP_LABEL)" --app-id $(APP_ID) \
 		--app-version $(VERSION) --app-build $(BUILD_NUM) --icon $(ICON)
-	rm -rf "$(MAC_DIST)/$(APP_LABEL).app" "$(MAC_DIST)/$(APP_LABEL).zip"
+	rm -rf "$(MAC_DIST)/$(APP_LABEL).app" "$(MAC_ARCHIVE)"
 	mkdir -p $(MAC_DIST)
 	mv "$(APP_LABEL).app" $(MAC_DIST)/
 	ditto -c -k --sequesterRsrc --keepParent \
-		"$(MAC_DIST)/$(APP_LABEL).app" "$(MAC_DIST)/$(APP_LABEL).zip"
-	@echo "[✓] Package: \"$(CURDIR)/$(MAC_DIST)/$(APP_LABEL).zip\""
+		"$(MAC_DIST)/$(APP_LABEL).app" "$(MAC_ARCHIVE)"
+	@echo "[✓] Package: \"$(CURDIR)/$(MAC_ARCHIVE)\""
 
 package-windows: check-fyne-cross check-docker
-	fyne-cross windows -arch=amd64 $(META_FLAGS) $(MAIN_PKG)
+	fyne-cross windows -arch=$(WINDOWS_ARCH) $(META_FLAGS) $(MAIN_PKG)
+	mv "$(WINDOWS_DIST)/$(APP_LABEL).zip" "$(WINDOWS_ARCHIVE)"
+	@echo "[✓] Package: \"$(CURDIR)/$(WINDOWS_ARCHIVE)\""
 
 package-linux: check-fyne-cross check-docker
-	fyne-cross linux -arch=amd64 $(META_FLAGS) $(MAIN_PKG)
+	fyne-cross linux -arch=$(LINUX_ARCH) $(META_FLAGS) $(MAIN_PKG)
+	mv "$(LINUX_DIST)/$(APP_LABEL).tar.xz" "$(LINUX_ARCHIVE)"
+	@echo "[✓] Package: \"$(CURDIR)/$(LINUX_ARCHIVE)\""
 
 package-all: package-mac package-windows package-linux
 
