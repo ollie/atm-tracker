@@ -62,12 +62,16 @@ var datarefsMap = map[int32]datarefMapItem{
 		assign: func(p *telemetry.Position, value float32) { p.GroundspeedKt = telemetry.MpsToKts(value) },
 	},
 	10: {
-		name:   "sim/flightmodel/position/indicated_airspeed", // kias
-		assign: func(p *telemetry.Position, value float32) { p.IndicatedAirspeedKt = telemetry.MpsToKts(value) },
+		name: "sim/flightmodel/position/indicated_airspeed", // kias
+		assign: func(p *telemetry.Position, value float32) {
+			p.IndicatedAirspeedKt = telemetry.Kts(telemetry.RoundToInt(value))
+		},
 	},
 	11: {
-		name:   "sim/flightmodel/position/indicated_airspeed2", // kias
-		assign: func(p *telemetry.Position, value float32) { p.IndicatedAirspeed2 = telemetry.MpsToKts(value) },
+		name: "sim/flightmodel/position/indicated_airspeed2", // kias
+		assign: func(p *telemetry.Position, value float32) {
+			p.IndicatedAirspeed2 = telemetry.Kts(telemetry.RoundToInt(value))
+		},
 	},
 	12: {
 		name:   "sim/flightmodel/position/true_airspeed", // m/s
