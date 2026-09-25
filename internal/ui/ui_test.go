@@ -238,7 +238,3 @@ func TestTheLogTabSaysWhenThereIsNoFile(t *testing.T) {
 
 	test.Tap(u.logButton)
 }
-
-func TestTheLogFileIsOpenedAsAURL(t *testing.T) {
-	assert.Equal(t, "file:///tmp/atm-tracker.log", logURL("/tmp/atm-tracker.log").String(), "a bare path opens nothing")
-}

@@ -82,14 +82,14 @@ func main() {
 }
 
 func startLogging(u *ui.UI) *os.File {
-	writers := []io.Writer{os.Stderr}
+	var writers []io.Writer
 
 	file, path := openLogFile()
 	if file != nil {
 		writers = append(writers, file)
 	}
 
-	log.SetOutput(io.MultiWriter(writers...))
+	log.SetOutput(io.MultiWriter(append(writers, os.Stderr)...))
 	u.SetLogFile(path)
 
 	if path == "" {

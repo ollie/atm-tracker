@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net/url"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -13,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/ollie/atm-tracker/internal/api"
+	"github.com/skratchdot/open-golang/open"
 )
 
 const (
@@ -41,8 +41,6 @@ type Actions struct {
 type UI struct {
 	Win fyne.Window
 
-	app fyne.App
-
 	flightValue  *widget.Label
 	statusValue  *widget.Label
 	targetsValue *widget.Label
@@ -66,7 +64,6 @@ type UI struct {
 func New(app fyne.App, actions Actions) *UI {
 	u := &UI{
 		Win:          app.NewWindow("Air Transport Magnate Tracker"),
-		app:          app,
 		flightValue:  widget.NewLabel(""),
 		statusValue:  widget.NewLabel(""),
 		targetsValue: widget.NewLabel(""),
@@ -305,11 +302,7 @@ func (u *UI) openLog() {
 		return
 	}
 
-	if err := u.app.OpenURL(logURL(u.logPath)); err != nil {
+	if err := open.Run(u.logPath); err != nil {
 		log.Printf("could not open %s: %v", u.logPath, err)
 	}
-}
-
-func logURL(path string) *url.URL {
-	return &url.URL{Scheme: "file", Path: path}
 }
