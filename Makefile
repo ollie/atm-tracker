@@ -27,7 +27,7 @@ BUILD_NUM ?= 1
 META_FLAGS := -app-id $(APP_ID) -app-version $(VERSION) -app-build $(BUILD_NUM) \
 	-name "$(APP_LABEL)" -icon $(ICON) -env GOTOOLCHAIN=auto
 
-.PHONY: all test lint fmt run version build package package-mac package-windows package-linux package-all clean
+.PHONY: all test lint fmt run version build package package-mac package-windows package-linux package-all clean clean-build check-fyne-cross check-docker
 
 all: build
 
@@ -79,8 +79,6 @@ clean: clean-build
 
 clean-build:
 	rm -rf $(BUILD_DIR) "$(APP_LABEL).app"
-
-.PHONY: clean-build check-fyne-cross check-docker
 
 check-fyne-cross:
 	@command -v fyne-cross >/dev/null || { echo "fyne-cross not found: go install github.com/fyne-io/fyne-cross@latest"; exit 1; }
