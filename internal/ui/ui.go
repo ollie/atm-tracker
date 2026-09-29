@@ -27,9 +27,9 @@ const (
 )
 
 var warningKinds = map[string]string{
-	"not_at_departure": "the aircraft is not at the departure airport",
-	"diverted":         "landed away from the filed arrival",
-	"fuel_anomaly":     "the fuel readings do not add up, the flight was rejected",
+	"not_at_departure": "The aircraft is not at the departure airport",
+	"diverted":         "Landed away from the filed arrival",
+	"fuel_anomaly":     "The fuel readings do not add up, the flight was rejected",
 }
 
 type Actions struct {
@@ -127,7 +127,7 @@ func fieldLabel(text string) *widget.Label {
 func (u *UI) SigningIn() {
 	fyne.Do(func() {
 		u.loginButton.Disable()
-		u.flightValue.SetText("waiting for the browser")
+		u.flightValue.SetText("Waiting for the browser")
 		u.resetFlight()
 		u.resetNotes()
 	})
@@ -138,7 +138,7 @@ func (u *UI) SignedIn() {
 		u.loginButton.Hide()
 		u.logoutButton.Show()
 		u.logoutButton.Enable()
-		u.flightValue.SetText("looking for your flight")
+		u.flightValue.SetText("Looking for your flight")
 		u.resetFlight()
 		u.resetNotes()
 	})
@@ -149,7 +149,7 @@ func (u *UI) SignedOut() {
 		u.logoutButton.Hide()
 		u.loginButton.Show()
 		u.loginButton.Enable()
-		u.flightValue.SetText("log in to start tracking")
+		u.flightValue.SetText("Log in to start tracking")
 		u.resetFlight()
 		u.resetNotes()
 	})
@@ -157,7 +157,7 @@ func (u *UI) SignedOut() {
 
 func (u *UI) SetNoFlight() {
 	fyne.Do(func() {
-		u.flightValue.SetText("no flight to fly")
+		u.flightValue.SetText("No flight to fly")
 		u.resetFlight()
 	})
 }
@@ -215,7 +215,7 @@ func (u *UI) resetFlight() {
 	u.statusValue.SetText("–")
 	u.targetsValue.SetText("–")
 	u.actualValue.SetText("–")
-	u.simValue.SetText("not tracking")
+	u.simValue.SetText("Not tracking")
 	u.eventValue.SetText("–")
 }
 
@@ -225,9 +225,9 @@ func (u *UI) resetNotes() {
 }
 
 func (u *UI) SetLive(live bool) {
-	text := "waiting for X-Plane"
+	text := "Waiting for X-Plane"
 	if live {
-		text = "receiving"
+		text = "Receiving"
 	}
 
 	fyne.Do(func() { u.simValue.SetText(text) })
@@ -287,7 +287,7 @@ func (u *UI) SetLogFile(path string) {
 		u.logPath = path
 
 		if path == "" {
-			u.logNote.SetText("could not open the log file, the log is on the terminal only")
+			u.logNote.SetText("Could not open the log file, the log is on the terminal only")
 			u.logButton.Hide()
 			return
 		}

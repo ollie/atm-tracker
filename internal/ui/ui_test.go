@@ -28,14 +28,14 @@ func TestSignedInSwapsTheButtons(t *testing.T) {
 	u := testUI(t)
 
 	u.SignedIn()
-	assert.False(t, u.loginButton.Visible(), "log in stays offered after signing in")
+	assert.False(t, u.loginButton.Visible(), "Log in stays offered after signing in")
 	assert.True(t, u.logoutButton.Visible())
-	assert.Equal(t, "looking for your flight", u.flightValue.Text)
+	assert.Equal(t, "Looking for your flight", u.flightValue.Text)
 
 	u.SignedOut()
 	assert.True(t, u.loginButton.Visible())
 	assert.False(t, u.logoutButton.Visible())
-	assert.Equal(t, "log in to start tracking", u.flightValue.Text)
+	assert.Equal(t, "Log in to start tracking", u.flightValue.Text)
 }
 
 func TestSigningInDisablesTheButtonUntilTheBrowserAnswers(t *testing.T) {
@@ -43,7 +43,7 @@ func TestSigningInDisablesTheButtonUntilTheBrowserAnswers(t *testing.T) {
 
 	u.SigningIn()
 	assert.True(t, u.loginButton.Disabled(), "a second click would open a second browser tab")
-	assert.Equal(t, "waiting for the browser", u.flightValue.Text)
+	assert.Equal(t, "Waiting for the browser", u.flightValue.Text)
 
 	u.SignedOut()
 	assert.False(t, u.loginButton.Disabled(), "a failed login must be retryable")
@@ -130,21 +130,21 @@ func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 
 	u.SetNoFlight()
 
-	assert.Equal(t, "no flight to fly", u.flightValue.Text)
+	assert.Equal(t, "No flight to fly", u.flightValue.Text)
 	assert.Equal(t, "–", u.statusValue.Text)
 	assert.Equal(t, "–", u.targetsValue.Text)
 	assert.Equal(t, "–", u.actualValue.Text)
-	assert.Equal(t, "not tracking", u.simValue.Text)
+	assert.Equal(t, "Not tracking", u.simValue.Text)
 }
 
 func TestSetLiveTellsThePlayerWhetherTheSimIsTalking(t *testing.T) {
 	u := testUI(t)
 
 	u.SetLive(true)
-	assert.Equal(t, "receiving", u.simValue.Text)
+	assert.Equal(t, "Receiving", u.simValue.Text)
 
 	u.SetLive(false)
-	assert.Equal(t, "waiting for X-Plane", u.simValue.Text)
+	assert.Equal(t, "Waiting for X-Plane", u.simValue.Text)
 }
 
 func TestSetProgressShowsTheLastEventInZulu(t *testing.T) {
