@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	DefaultBaseURL = "https://atm.oldrichvetesnik.cz"
+	DefaultBaseURL = "https://www.atmagnate.eu"
 
 	baseURLEnv  = "ATM_API_URL"
 	prefBaseURL = "apiBaseURL"
