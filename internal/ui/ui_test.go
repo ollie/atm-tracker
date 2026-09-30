@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 func testUI(t *testing.T) *UI {
 	t.Helper()
 
-	return New(test.NewApp(), Actions{})
+	return New(test.NewApp(), "0.0.0", Actions{})
 }
 
 func TestSignedInSwapsTheButtons(t *testing.T) {

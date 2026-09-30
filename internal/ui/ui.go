@@ -61,9 +61,9 @@ type UI struct {
 	warning string
 }
 
-func New(app fyne.App, actions Actions) *UI {
+func New(app fyne.App, version string, actions Actions) *UI {
 	u := &UI{
-		Win:          app.NewWindow("Air Transport Magnate Tracker"),
+		Win:          app.NewWindow("Air Transport Magnate Tracker v" + version),
 		flightValue:  widget.NewLabel(""),
 		statusValue:  widget.NewLabel(""),
 		targetsValue: widget.NewLabel(""),

@@ -57,7 +57,7 @@ func main() {
 		}()
 	}
 
-	u := ui.New(fyneApp, ui.Actions{
+	u := ui.New(fyneApp, version, ui.Actions{
 		SignIn:  func() { t.SignIn() },
 		SignOut: func() { t.SignOut() },
 		Quit:    quit,
@@ -93,9 +93,9 @@ func startLogging(u *ui.UI) *os.File {
 	u.SetLogFile(path)
 
 	if path == "" {
-		log.Printf("could not open %s, logging to screen only", logFileName)
+		log.Printf("ATM Tracker v%s: could not open %s, logging to screen only", version, logFileName)
 	} else {
-		log.Printf("logging to %s", path)
+		log.Printf("ATM Tracker v%s: logging to %s", version, path)
 	}
 
 	return file
