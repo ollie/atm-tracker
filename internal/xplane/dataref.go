@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	engineDatarefAt = 19
+	engineDatarefAt = 21
 
 	Addr = "127.0.0.1:49000"
 )
@@ -100,6 +100,14 @@ var datarefsMap = map[int32]datarefMapItem{
 	18: {
 		name:   "sim/aircraft/engine/acf_num_engines",
 		assign: func(p *telemetry.Position, value float32) { p.NumEngines = telemetry.RoundToInt(value) },
+	},
+	19: {
+		name:   "sim/time/ground_speed", // ground speed multiplier, 1 = normal
+		assign: func(p *telemetry.Position, value float32) { p.GroundSpeedMultiplier = telemetry.RoundToInt(value) },
+	},
+	20: {
+		name:   "sim/time/sim_speed", // sim time multiplier, 1 = real time
+		assign: func(p *telemetry.Position, value float32) { p.SimSpeedMultiplier = telemetry.RoundToInt(value) },
 	},
 }
 
