@@ -9,6 +9,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/ollie/atm-tracker/internal/api"
@@ -24,6 +25,8 @@ const (
 	lbPerKg     = 2.20462262185
 	unitKg      = "kg"
 	unitLb      = "lb"
+
+	prefAlwaysOnTop = "alwaysOnTop"
 )
 
 var warningKinds = map[string]string{
@@ -56,6 +59,9 @@ type UI struct {
 	logButton *widget.Button
 	logPath   string
 
+	onTopCheck *widget.Check
+	onTopNote  *widget.Label
+
 	unit    string
 	note    string
 	warning string
@@ -72,8 +78,22 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		eventValue:   widget.NewLabel(""),
 		noteValue:    widget.NewLabel(""),
 		logNote:      widget.NewLabel(""),
+		onTopNote:    widget.NewLabel("Takes effect on the next start"),
 		unit:         unitKg,
 	}
+
+	prefs := app.Preferences()
+	u.onTopNote.Hide()
+	u.onTopCheck = widget.NewCheck("Always on top", func(on bool) {
+		prefs.SetBool(prefAlwaysOnTop, on)
+		if on {
+			u.requestAlwaysOnTop()
+			u.onTopNote.Hide()
+		} else {
+			u.onTopNote.Show()
+		}
+	})
+	u.onTopCheck.SetChecked(prefs.Bool(prefAlwaysOnTop))
 
 	u.noteValue.Importance = widget.WarningImportance
 	u.logButton = widget.NewButton("Open log", u.openLog)
@@ -103,9 +123,12 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		container.NewHBox(u.logButton),
 	)
 
+	settingsPane := container.NewVBox(u.onTopCheck, u.onTopNote)
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Flight", container.NewPadded(flightPane)),
 		container.NewTabItem("Log", container.NewPadded(logPane)),
+		container.NewTabItem("Settings", container.NewPadded(settingsPane)),
 	)
 
 	buttons := container.NewGridWrap(
@@ -118,6 +141,12 @@ func New(app fyne.App, version string, actions Actions) *UI {
 	u.Win.SetCloseIntercept(actions.Quit)
 
 	return u
+}
+
+func (u *UI) requestAlwaysOnTop() {
+	if w, ok := u.Win.(desktop.Window); ok {
+		w.RequestAlwaysOnTop()
+	}
 }
 
 func fieldLabel(text string) *widget.Label {

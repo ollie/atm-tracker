@@ -238,3 +238,30 @@ func TestTheLogTabSaysWhenThereIsNoFile(t *testing.T) {
 
 	test.Tap(u.logButton)
 }
+
+func TestAlwaysOnTopIsRememberedAcrossStarts(t *testing.T) {
+	app := test.NewApp()
+	u := New(app, "0.0.0", Actions{})
+	assert.False(t, u.onTopCheck.Checked)
+
+	u.onTopCheck.SetChecked(true)
+	assert.True(t, app.Preferences().Bool(prefAlwaysOnTop))
+	assert.False(t, u.onTopNote.Visible())
+
+	again := New(app, "0.0.0", Actions{})
+	assert.True(t, again.onTopCheck.Checked)
+	assert.False(t, again.onTopNote.Visible())
+}
+
+func TestTurningAlwaysOnTopOffSaysItWaitsForTheNextStart(t *testing.T) {
+	app := test.NewApp()
+	app.Preferences().SetBool(prefAlwaysOnTop, true)
+	u := New(app, "0.0.0", Actions{})
+
+	u.onTopCheck.SetChecked(false)
+	assert.False(t, app.Preferences().Bool(prefAlwaysOnTop))
+	assert.True(t, u.onTopNote.Visible(), "the window stays on top until restart, say so")
+
+	u.onTopCheck.SetChecked(true)
+	assert.False(t, u.onTopNote.Visible(), "turning it back on applies at once")
+}

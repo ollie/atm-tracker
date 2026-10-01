@@ -2,7 +2,7 @@
 Icon = "Icon.png"
 Name = "Air Transport Magnate"
 ID = "cz.oldrichvetesnik.atm"
-Build = 1
+Build = 4
 
 [Migrations]
 fyneDo = true
