@@ -178,3 +178,74 @@ func waitForClose(t *testing.T, done <-chan struct{}, message string) {
 		t.Fatal(message)
 	}
 }
+
+func TestPauseStopsAtPauseOnWhenTheSimObeys(t *testing.T) {
+	sim := newSim(t)
+	result := startPause(sim, waitTime)
+
+	assert.Equal(t, makeRREF(pausedHz, pausedIndex, pausedDataref), sim.Packet(), "the pause state is read on this socket")
+	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(sim.Packet()))
+
+	sim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
+	sim.Send(xplanetest.Update{Index: pausedIndex, Value: 1})
+
+	require.NoError(t, pauseResult(t, result))
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet(), "no toggle went out, the stale 0 must not count")
+}
+
+func TestPauseTogglesWhenTheSimIgnoresPauseOn(t *testing.T) {
+	sim := newSim(t)
+	result := startPause(sim, waitTime)
+
+	sim.Packet()
+	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(sim.Packet()))
+	for range int(waitTime / (time.Second / pausedHz)) {
+		sim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
+	}
+
+	assert.Equal(t, "CMND\x00sim/operation/pause_toggle", string(sim.Packet()), "XP11 only knows the toggle")
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet())
+	require.NoError(t, pauseResult(t, result))
+}
+
+func TestPauseDoesNotToggleWhenTheSimGoesQuiet(t *testing.T) {
+	sim := newSim(t)
+	result := startPause(sim, 300*time.Millisecond)
+
+	sim.Packet()
+	sim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
+	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(sim.Packet()))
+
+	require.ErrorContains(t, pauseResult(t, result), "quiet")
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet(), "a stalled XP12 has paused, toggling would unpause it")
+}
+
+func TestPauseFailsWhenXPlaneIsSilent(t *testing.T) {
+	sim := newSim(t)
+	result := startPause(sim, 50*time.Millisecond)
+
+	sim.Packet()
+	sim.Packet()
+
+	require.ErrorContains(t, pauseResult(t, result), "answer")
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet(), "still unsubscribes")
+}
+
+func startPause(sim *xplanetest.Sim, settle time.Duration) <-chan error {
+	result := make(chan error, 1)
+	go func() { result <- Pause(sim.Addr, settle) }()
+
+	return result
+}
+
+func pauseResult(t *testing.T, result <-chan error) error {
+	t.Helper()
+
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(waitTime):
+		t.Fatal("Pause did not return")
+		return nil
+	}
+}

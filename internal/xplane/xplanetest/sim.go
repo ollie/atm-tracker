@@ -34,6 +34,7 @@ type Sim struct {
 
 	t        *testing.T
 	conn     *net.UDPConn
+	replies  *net.UDPConn
 	datarefs int
 
 	mu     sync.Mutex
@@ -47,7 +48,11 @@ func NewSim(t *testing.T, datarefs int) *Sim {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return &Sim{Addr: conn.LocalAddr().String(), t: t, conn: conn, datarefs: datarefs}
+	replies, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = replies.Close() })
+
+	return &Sim{Addr: conn.LocalAddr().String(), t: t, conn: conn, replies: replies, datarefs: datarefs}
 }
 
 func (s *Sim) Subscriptions() map[int32]Subscription {
@@ -78,6 +83,22 @@ func (s *Sim) Subscriptions() map[int32]Subscription {
 	return got
 }
 
+func (s *Sim) Packet() []byte {
+	s.t.Helper()
+
+	buf := make([]byte, 2048)
+	require.NoError(s.t, s.conn.SetReadDeadline(time.Now().Add(waitTime)))
+
+	n, from, err := s.conn.ReadFromUDP(buf)
+	require.NoError(s.t, err, "nothing arrived at the sim")
+
+	s.mu.Lock()
+	s.client = from
+	s.mu.Unlock()
+
+	return buf[:n]
+}
+
 func (s *Sim) Send(updates ...Update) {
 	s.t.Helper()
 
@@ -106,7 +127,7 @@ func (s *Sim) write(packet []byte) {
 	s.mu.Unlock()
 	require.NotNil(s.t, client, "the tracker has not subscribed yet")
 
-	_, err := s.conn.WriteToUDP(packet, client)
+	_, err := s.replies.WriteToUDP(packet, client)
 	require.NoError(s.t, err)
 }
 

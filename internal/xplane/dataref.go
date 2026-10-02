@@ -11,6 +11,8 @@ const (
 	engineDatarefAt = 21
 
 	Addr = "127.0.0.1:49000"
+
+	pausedDataref = "sim/time/paused"
 )
 
 type datarefMapItem struct {
@@ -26,7 +28,7 @@ type Update struct {
 // https://developer.x-plane.com/datarefs/
 var datarefsMap = map[int32]datarefMapItem{
 	1: {
-		name:   "sim/time/paused",
+		name:   pausedDataref,
 		assign: func(p *telemetry.Position, value float32) { p.Paused = value == 1 },
 	},
 	2: {

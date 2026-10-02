@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"github.com/ollie/atm-tracker/internal/api"
 	"github.com/stretchr/testify/assert"
@@ -264,4 +265,118 @@ func TestTurningAlwaysOnTopOffSaysItWaitsForTheNextStart(t *testing.T) {
 
 	u.onTopCheck.SetChecked(true)
 	assert.False(t, u.onTopNote.Visible(), "turning it back on applies at once")
+}
+
+func timerUI(t *testing.T, paused *int) *UI {
+	t.Helper()
+
+	return New(test.NewApp(), "0.0.0", Actions{PauseSim: func() { *paused++ }})
+}
+
+func TestTimerCountsDownAndPausesTheSim(t *testing.T) {
+	paused := 0
+	u := timerUI(t, &paused)
+	assert.Equal(t, "1", u.timerHours.Text, "one hour is the default")
+	assert.Equal(t, "0", u.timerMinutes.Text)
+	assert.Equal(t, "0", u.timerSeconds.Text)
+
+	u.timerHours.SetText("0")
+	u.timerMinutes.SetText("2")
+	test.Tap(u.timerButton)
+	assert.Equal(t, "Stop", u.timerButton.Text)
+	assert.True(t, u.timerHours.Disabled())
+	assert.True(t, u.timerMinutes.Disabled())
+	assert.True(t, u.timerSeconds.Disabled())
+	assert.Equal(t, "00:02:00", u.timerNote.Text, "the greyed-out fields are hard to read, the note repeats them")
+
+	u.tick(u.timerEnd.Add(-61 * time.Second))
+	assert.Equal(t, "1", u.timerMinutes.Text)
+	assert.Equal(t, "1", u.timerSeconds.Text)
+	assert.Equal(t, "00:01:01", u.timerNote.Text)
+	u.tick(u.timerEnd.Add(-59 * time.Second))
+	assert.Equal(t, "0", u.timerMinutes.Text)
+	assert.Equal(t, "59", u.timerSeconds.Text)
+	u.tick(u.timerEnd.Add(-500 * time.Millisecond))
+	assert.Equal(t, "1", u.timerSeconds.Text, "the last second reads 1, not 0")
+	assert.Equal(t, 0, paused)
+	assert.NotContains(t, u.timerEnd.String(), "m=", "no monotonic reading, so a sleep counts as time passed")
+
+	u.tick(u.timerEnd)
+	assert.Equal(t, 1, paused)
+	assert.Equal(t, "Start", u.timerButton.Text)
+	assert.False(t, u.timerHours.Disabled())
+	assert.Equal(t, "0", u.timerMinutes.Text)
+	assert.Equal(t, "0", u.timerSeconds.Text)
+	assert.Contains(t, u.timerNote.Text, "pausing X-Plane")
+}
+
+func TestTimerStopKeepsTheTimeLeft(t *testing.T) {
+	paused := 0
+	u := timerUI(t, &paused)
+	u.timerMinutes.SetText("30")
+	test.Tap(u.timerButton)
+
+	u.tick(u.timerEnd.Add(-40*time.Minute - 15*time.Second))
+	assert.Equal(t, "0", u.timerHours.Text)
+	assert.Equal(t, "40", u.timerMinutes.Text)
+	assert.Equal(t, "15", u.timerSeconds.Text)
+
+	test.Tap(u.timerButton)
+	assert.Equal(t, "Start", u.timerButton.Text)
+	assert.False(t, u.timerMinutes.Disabled())
+	assert.Equal(t, "40", u.timerMinutes.Text, "Stop must leave the time left in the fields")
+	assert.True(t, u.timerEnd.IsZero())
+
+	u.tick(time.Now().Add(time.Hour))
+	assert.Equal(t, 0, paused, "a tick already queued when Stop ran must not fire")
+	assert.Equal(t, "40", u.timerMinutes.Text)
+
+	test.Tap(u.timerButton)
+	assert.WithinDuration(t, time.Now().Add(40*time.Minute+15*time.Second), u.timerEnd, time.Second, "Start continues from what the fields say")
+	test.Tap(u.timerButton)
+}
+
+func TestEnterInAFieldStartsTheTimer(t *testing.T) {
+	u := timerUI(t, new(int))
+	u.timerMinutes.SetText("5")
+
+	u.timerMinutes.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	assert.Equal(t, "Stop", u.timerButton.Text, "Enter in a field is the same as the button, as in an HTML form")
+	assert.WithinDuration(t, time.Now().Add(time.Hour+5*time.Minute), u.timerEnd, time.Second)
+	test.Tap(u.timerButton)
+}
+
+func TestTimerRefusesAnEmptyOrBadTime(t *testing.T) {
+	u := timerUI(t, new(int))
+
+	u.timerHours.SetText("")
+	u.timerMinutes.SetText("")
+	u.timerSeconds.SetText("")
+	test.Tap(u.timerButton)
+	assert.True(t, u.timerEnd.IsZero())
+	assert.Equal(t, "Start", u.timerButton.Text)
+	assert.NotEmpty(t, u.timerNote.Text)
+
+	u.timerHours.SetText("abc")
+	test.Tap(u.timerButton)
+	assert.True(t, u.timerEnd.IsZero(), "a letter in the field must not start anything")
+
+	u.timerHours.SetText("1")
+	u.timerMinutes.SetText("-30")
+	test.Tap(u.timerButton)
+	assert.True(t, u.timerEnd.IsZero(), "a minus sign must not shorten the hour")
+
+	u.timerHours.SetText("9999999999")
+	u.timerMinutes.SetText("0")
+	test.Tap(u.timerButton)
+	assert.True(t, u.timerEnd.IsZero(), "an absurd hour count must not overflow into a short timer")
+}
+
+func TestTickWithoutAPauseActionDoesNotPanic(t *testing.T) {
+	u := testUI(t)
+	u.timerSeconds.SetText("1")
+	test.Tap(u.timerButton)
+
+	assert.NotPanics(t, func() { u.tick(u.timerEnd) })
 }

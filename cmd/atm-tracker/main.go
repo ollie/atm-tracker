@@ -17,6 +17,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/ollie/atm-tracker/internal/tracker"
 	"github.com/ollie/atm-tracker/internal/ui"
+	"github.com/ollie/atm-tracker/internal/xplane"
 )
 
 const (
@@ -61,6 +62,14 @@ func main() {
 		SignIn:  func() { t.SignIn() },
 		SignOut: func() { t.SignOut() },
 		Quit:    quit,
+		PauseSim: func() {
+			go func() {
+				log.Print("the timer ran out, pausing X-Plane")
+				if err := xplane.Pause(xplane.Addr, xplane.PauseSettle); err != nil {
+					log.Printf("could not pause the sim: %v", err)
+				}
+			}()
+		},
 	})
 
 	logFile := startLogging(u)
