@@ -37,8 +37,8 @@ func TestFlightReadsTheCurrentFlight(t *testing.T) {
 	server.SetFlight(&api.FlightInfo{
 		ID:              42,
 		Status:          "boarding",
-		Departure:       api.AirportInfo{Ident: "LKPR", Name: "Prague"},
-		Arrival:         api.AirportInfo{Ident: "EGLL", Name: "Heathrow"},
+		Departure:       api.AirportInfo{Code: "PRG", Name: "Prague"},
+		Arrival:         api.AirportInfo{Code: "EGLL", Name: "Heathrow"},
 		TargetPayloadKg: 1200,
 		TargetFuelKg:    800,
 		WeightUnit:      "lb",
@@ -49,8 +49,8 @@ func TestFlightReadsTheCurrentFlight(t *testing.T) {
 	require.NotNil(t, item)
 
 	assert.Equal(t, 42, item.ID)
-	assert.Equal(t, "LKPR", item.Departure.Ident)
-	assert.Equal(t, "EGLL", item.Arrival.Ident)
+	assert.Equal(t, "PRG", item.Departure.Code)
+	assert.Equal(t, "EGLL", item.Arrival.Code)
 	assert.Equal(t, 1200, item.TargetPayloadKg)
 	assert.Equal(t, 800, item.TargetFuelKg)
 	assert.Equal(t, "lb", item.WeightUnit)

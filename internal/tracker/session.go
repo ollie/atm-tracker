@@ -63,7 +63,7 @@ func (s *session) poll(ctx context.Context) {
 
 func (s *session) fly(ctx context.Context, item *api.FlightInfo) {
 	s.ui.StartFlight(item)
-	log.Printf("flying %d, %s to %s", item.ID, item.Departure.Ident, item.Arrival.Ident)
+	log.Printf("flying %d, %s to %s", item.ID, item.Departure.Code, item.Arrival.Code)
 
 	addr, err := net.ResolveUDPAddr("udp", s.simAddr)
 	if err != nil {

@@ -21,8 +21,8 @@ const (
 )
 
 type AirportInfo struct {
-	Ident string `json:"ident"`
-	Name  string `json:"name"`
+	Code string `json:"code"`
+	Name string `json:"name"`
 }
 
 type FlightInfo struct {

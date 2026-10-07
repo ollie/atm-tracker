@@ -55,8 +55,8 @@ func TestStartFlightShowsTheRouteAndTargets(t *testing.T) {
 
 	u.StartFlight(&api.FlightInfo{
 		Status:          "boarding",
-		Departure:       api.AirportInfo{Ident: "LKPR"},
-		Arrival:         api.AirportInfo{Ident: "EGLL"},
+		Departure:       api.AirportInfo{Code: "LKPR"},
+		Arrival:         api.AirportInfo{Code: "EGLL"},
 		TargetPayloadKg: 1200,
 		TargetFuelKg:    800,
 	})
@@ -85,8 +85,8 @@ func TestStartFlightShowsTheTargetsInThePlayersUnit(t *testing.T) {
 
 			u.StartFlight(&api.FlightInfo{
 				Status:          "boarding",
-				Departure:       api.AirportInfo{Ident: "LKPR"},
-				Arrival:         api.AirportInfo{Ident: "EGLL"},
+				Departure:       api.AirportInfo{Code: "LKPR"},
+				Arrival:         api.AirportInfo{Code: "EGLL"},
 				TargetPayloadKg: 1200,
 				TargetFuelKg:    800,
 				WeightUnit:      test.unit,
@@ -113,8 +113,8 @@ func TestTheActualLoadRendersInTheFlightsUnit(t *testing.T) {
 			u := testUI(t)
 
 			u.StartFlight(&api.FlightInfo{
-				Departure:  api.AirportInfo{Ident: "LKPR"},
-				Arrival:    api.AirportInfo{Ident: "EGLL"},
+				Departure:  api.AirportInfo{Code: "LKPR"},
+				Arrival:    api.AirportInfo{Code: "EGLL"},
 				WeightUnit: test.unit,
 			})
 			u.SetActual(1150.4, 779.6)
@@ -126,7 +126,7 @@ func TestTheActualLoadRendersInTheFlightsUnit(t *testing.T) {
 
 func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	u := testUI(t)
-	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Ident: "LKPR"}, Arrival: api.AirportInfo{Ident: "EGLL"}})
+	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
 	u.SetActual(1150, 780)
 
 	u.SetNoFlight()
@@ -179,7 +179,7 @@ func TestSetProgressKeepsTheLastEventWhenABatchHasNone(t *testing.T) {
 
 func TestWarningsOutliveTheBatchThatRaisedThem(t *testing.T) {
 	u := testUI(t)
-	u.StartFlight(&api.FlightInfo{Departure: api.AirportInfo{Ident: "LKPR"}, Arrival: api.AirportInfo{Ident: "EGLL"}})
+	u.StartFlight(&api.FlightInfo{Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
 
 	u.SetProgress(&api.PositionsResult{
 		Status: "cancelled",
@@ -193,7 +193,7 @@ func TestWarningsOutliveTheBatchThatRaisedThem(t *testing.T) {
 	u.SetNoFlight()
 	assert.Equal(t, warningKinds["fuel_anomaly"], u.noteValue.Text, "the flight ending is when the player reads it")
 
-	u.StartFlight(&api.FlightInfo{Departure: api.AirportInfo{Ident: "EGLL"}, Arrival: api.AirportInfo{Ident: "LKPR"}})
+	u.StartFlight(&api.FlightInfo{Departure: api.AirportInfo{Code: "EGLL"}, Arrival: api.AirportInfo{Code: "LKPR"}})
 	assert.Empty(t, u.noteValue.Text, "the next flight starts clean")
 }
 

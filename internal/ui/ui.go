@@ -339,7 +339,7 @@ func (u *UI) StartFlight(item *api.FlightInfo) {
 }
 
 func (u *UI) SetFlight(item *api.FlightInfo) {
-	route := fmt.Sprintf("%s → %s", item.Departure.Ident, item.Arrival.Ident)
+	route := fmt.Sprintf("%s → %s", item.Departure.Code, item.Arrival.Code)
 	unit := unitOf(item.WeightUnit)
 	targets := targetsText(item)
 

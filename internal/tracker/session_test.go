@@ -95,7 +95,7 @@ func (h *flightHarness) waitForEnd(message string) {
 }
 
 func testFlight() *api.FlightInfo {
-	return &api.FlightInfo{ID: 42, Departure: api.AirportInfo{Ident: "LKPR"}, Arrival: api.AirportInfo{Ident: "EGLL"}}
+	return &api.FlightInfo{ID: 42, Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}}
 }
 
 func TestAFlightCarriesSimTelemetryToTheAPI(t *testing.T) {
