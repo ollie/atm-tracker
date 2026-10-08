@@ -125,6 +125,7 @@ func New(app fyne.App, version string, actions Actions) *UI {
 	u.onTopCheck.SetChecked(prefs.Bool(prefAlwaysOnTop))
 
 	u.noteValue.Importance = widget.WarningImportance
+	u.logNote.Truncation = fyne.TextTruncateEllipsis
 	u.logButton = widget.NewButton("Open log", u.openLog)
 	u.logButton.Hide()
 

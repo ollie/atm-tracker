@@ -221,12 +221,15 @@ func TestAWarningHidesTheNoteUnderIt(t *testing.T) {
 
 func TestTheLogTabOffersToOpenTheLogFile(t *testing.T) {
 	u := testUI(t)
+	width := u.Win.Content().MinSize().Width
+	path := "/Users/olda/WWW/personal/server/atm-tracker/atm-tracker.log"
 
-	u.SetLogFile("/tmp/atm-tracker.log")
+	u.SetLogFile(path)
 
 	assert.True(t, u.logButton.Visible())
-	assert.Equal(t, "/tmp/atm-tracker.log", u.logNote.Text)
-	assert.Equal(t, "/tmp/atm-tracker.log", u.logPath, "the button opens what it stored, not what it displayed")
+	assert.Equal(t, path, u.logNote.Text)
+	assert.Equal(t, path, u.logPath, "the button opens what it stored, not what it displayed")
+	assert.Equal(t, width, u.Win.Content().MinSize().Width, "a long path must not stop the window from shrinking")
 }
 
 func TestTheLogTabSaysWhenThereIsNoFile(t *testing.T) {
