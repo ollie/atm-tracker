@@ -276,23 +276,30 @@ func timerUI(t *testing.T, paused *int) *UI {
 func TestTimerCountsDownAndPausesTheSim(t *testing.T) {
 	paused := 0
 	u := timerUI(t, &paused)
-	assert.Equal(t, "1", u.timerHours.Text, "one hour is the default")
-	assert.Equal(t, "0", u.timerMinutes.Text)
-	assert.Equal(t, "0", u.timerSeconds.Text)
+	assert.Equal(t, "", u.timerHours.Text, "the fields start empty")
+	assert.Equal(t, "", u.timerMinutes.Text)
+	assert.Equal(t, "", u.timerSeconds.Text)
+	assert.True(t, u.timerButton.Disabled(), "nothing to start with")
+	assert.Equal(t, "Timer", u.timerTab.Text)
 
 	u.timerHours.SetText("0")
 	u.timerMinutes.SetText("2")
+	assert.False(t, u.timerButton.Disabled())
 	test.Tap(u.timerButton)
 	assert.Equal(t, "Stop", u.timerButton.Text)
+	assert.False(t, u.timerButton.Disabled(), "the countdown rewrites the fields, Stop must stay live")
 	assert.True(t, u.timerHours.Disabled())
 	assert.True(t, u.timerMinutes.Disabled())
 	assert.True(t, u.timerSeconds.Disabled())
-	assert.Equal(t, "00:02:00", u.timerNote.Text, "the greyed-out fields are hard to read, the note repeats them")
+	assert.Equal(t, "00:02:00", u.timerLeft.Text, "the greyed-out fields are hard to read, the label repeats them")
+	assert.Equal(t, "Pausing X-Plane at "+u.timerEnd.Local().Format(time.TimeOnly), u.timerNote.Text)
+	assert.Equal(t, "Timer (00:02:00)", u.timerTab.Text, "the tab shows the time left from any tab")
 
 	u.tick(u.timerEnd.Add(-61 * time.Second))
 	assert.Equal(t, "1", u.timerMinutes.Text)
 	assert.Equal(t, "1", u.timerSeconds.Text)
-	assert.Equal(t, "00:01:01", u.timerNote.Text)
+	assert.Equal(t, "00:01:01", u.timerLeft.Text)
+	assert.Equal(t, "Timer (00:01:01)", u.timerTab.Text)
 	u.tick(u.timerEnd.Add(-59 * time.Second))
 	assert.Equal(t, "0", u.timerMinutes.Text)
 	assert.Equal(t, "59", u.timerSeconds.Text)
@@ -301,13 +308,17 @@ func TestTimerCountsDownAndPausesTheSim(t *testing.T) {
 	assert.Equal(t, 0, paused)
 	assert.NotContains(t, u.timerEnd.String(), "m=", "no monotonic reading, so a sleep counts as time passed")
 
-	u.tick(u.timerEnd)
+	end := u.timerEnd
+	u.tick(end)
 	assert.Equal(t, 1, paused)
 	assert.Equal(t, "Start", u.timerButton.Text)
 	assert.False(t, u.timerHours.Disabled())
 	assert.Equal(t, "0", u.timerMinutes.Text)
 	assert.Equal(t, "0", u.timerSeconds.Text)
-	assert.Contains(t, u.timerNote.Text, "pausing X-Plane")
+	assert.True(t, u.timerButton.Disabled(), "0 h 0 m 0 s is nothing to start")
+	assert.Equal(t, "00:00:00", u.timerLeft.Text)
+	assert.Equal(t, "Time is up, pausing X-Plane at "+end.Local().Format(time.TimeOnly), u.timerNote.Text)
+	assert.Equal(t, "Timer (00:00:00)", u.timerTab.Text, "a timer that ran out says so until the next start")
 }
 
 func TestTimerStopKeepsTheTimeLeft(t *testing.T) {
@@ -326,6 +337,10 @@ func TestTimerStopKeepsTheTimeLeft(t *testing.T) {
 	assert.False(t, u.timerMinutes.Disabled())
 	assert.Equal(t, "40", u.timerMinutes.Text, "Stop must leave the time left in the fields")
 	assert.True(t, u.timerEnd.IsZero())
+	assert.Equal(t, "Timer", u.timerTab.Text, "a stopped timer shows no time")
+	assert.False(t, u.timerButton.Disabled(), "the time left is enough to start again")
+	assert.Equal(t, "", u.timerLeft.Text)
+	assert.Equal(t, "", u.timerNote.Text, "nothing will pause, the note must not say when")
 
 	u.tick(time.Now().Add(time.Hour))
 	assert.Equal(t, 0, paused, "a tick already queued when Stop ran must not fire")
@@ -343,34 +358,33 @@ func TestEnterInAFieldStartsTheTimer(t *testing.T) {
 	u.timerMinutes.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
 	assert.Equal(t, "Stop", u.timerButton.Text, "Enter in a field is the same as the button, as in an HTML form")
-	assert.WithinDuration(t, time.Now().Add(time.Hour+5*time.Minute), u.timerEnd, time.Second)
+	assert.WithinDuration(t, time.Now().Add(5*time.Minute), u.timerEnd, time.Second, "empty fields count as zero")
 	test.Tap(u.timerButton)
 }
 
 func TestTimerRefusesAnEmptyOrBadTime(t *testing.T) {
 	u := timerUI(t, new(int))
 
-	u.timerHours.SetText("")
-	u.timerMinutes.SetText("")
-	u.timerSeconds.SetText("")
-	test.Tap(u.timerButton)
-	assert.True(t, u.timerEnd.IsZero())
-	assert.Equal(t, "Start", u.timerButton.Text)
-	assert.NotEmpty(t, u.timerNote.Text)
+	u.timerHours.SetText("0")
+	u.timerMinutes.SetText("0")
+	u.timerSeconds.SetText("0")
+	assert.True(t, u.timerButton.Disabled(), "zeros are no time")
+	u.timerMinutes.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	assert.True(t, u.timerEnd.IsZero(), "Enter must not get past a disabled button")
 
 	u.timerHours.SetText("abc")
-	test.Tap(u.timerButton)
-	assert.True(t, u.timerEnd.IsZero(), "a letter in the field must not start anything")
+	assert.True(t, u.timerButton.Disabled(), "a letter in the field must not start anything")
 
 	u.timerHours.SetText("1")
 	u.timerMinutes.SetText("-30")
-	test.Tap(u.timerButton)
-	assert.True(t, u.timerEnd.IsZero(), "a minus sign must not shorten the hour")
+	assert.True(t, u.timerButton.Disabled(), "a minus sign must not shorten the hour")
 
 	u.timerHours.SetText("9999999999")
 	u.timerMinutes.SetText("0")
-	test.Tap(u.timerButton)
-	assert.True(t, u.timerEnd.IsZero(), "an absurd hour count must not overflow into a short timer")
+	assert.True(t, u.timerButton.Disabled(), "an absurd hour count must not overflow into a short timer")
+
+	u.timerHours.SetText("1")
+	assert.False(t, u.timerButton.Disabled(), "fixing the field is enough, no restart needed")
 }
 
 func TestTickWithoutAPauseActionDoesNotPanic(t *testing.T) {

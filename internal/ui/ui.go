@@ -70,9 +70,12 @@ type UI struct {
 	timerSeconds *widget.Entry
 	timerFields  []*widget.Entry
 	timerButton  *widget.Button
+	timerLeft    *widget.Label
 	timerNote    *widget.Label
 	timerEnd     time.Time
 	timerDone    chan struct{}
+	timerTab     *container.TabItem
+	tabs         *container.AppTabs
 	pauseSim     func()
 
 	unit    string
@@ -92,9 +95,10 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		noteValue:    widget.NewLabel(""),
 		logNote:      widget.NewLabel(""),
 		onTopNote:    widget.NewLabel("Takes effect on the next start"),
-		timerHours:   timerEntry("1"),
-		timerMinutes: timerEntry("0"),
-		timerSeconds: timerEntry("0"),
+		timerHours:   widget.NewEntry(),
+		timerMinutes: widget.NewEntry(),
+		timerSeconds: widget.NewEntry(),
+		timerLeft:    widget.NewLabel(""),
 		timerNote:    widget.NewLabel(""),
 		pauseSim:     actions.PauseSim,
 		unit:         unitKg,
@@ -102,8 +106,10 @@ func New(app fyne.App, version string, actions Actions) *UI {
 	u.timerButton = widget.NewButton("Start", u.toggleTimer)
 	u.timerFields = []*widget.Entry{u.timerHours, u.timerMinutes, u.timerSeconds}
 	for _, e := range u.timerFields {
+		e.OnChanged = func(string) { u.allowStart() }
 		e.OnSubmitted = func(string) { u.startTimer() }
 	}
+	u.allowStart()
 
 	prefs := app.Preferences()
 	u.onTopNote.Hide()
@@ -149,20 +155,19 @@ func New(app fyne.App, version string, actions Actions) *UI {
 	settingsPane := container.NewVBox(u.onTopCheck, u.onTopNote)
 
 	timerPane := container.NewVBox(
-		container.New(layout.NewFormLayout(),
-			fieldLabel("hh:mm:ss"), container.NewHBox(
-				u.timerHours, widget.NewLabel(":"), u.timerMinutes, widget.NewLabel(":"), u.timerSeconds,
-				u.timerButton,
-			),
+		container.NewHBox(
+			u.timerHours, widget.NewLabel("h"), u.timerMinutes, widget.NewLabel("m"), u.timerSeconds, widget.NewLabel("s"),
+			u.timerButton, u.timerLeft,
 		),
 		u.timerNote,
 	)
 
-	tabs := container.NewAppTabs(
+	u.timerTab = container.NewTabItem("Timer", container.NewPadded(timerPane))
+	u.tabs = container.NewAppTabs(
 		container.NewTabItem("Flight", container.NewPadded(flightPane)),
 		container.NewTabItem("Log", container.NewPadded(logPane)),
 		container.NewTabItem("Settings", container.NewPadded(settingsPane)),
-		container.NewTabItem("Timer", container.NewPadded(timerPane)),
+		u.timerTab,
 	)
 
 	buttons := container.NewGridWrap(
@@ -170,7 +175,7 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		u.loginButton, u.logoutButton, quitButton,
 	)
 
-	u.Win.SetContent(container.NewBorder(nil, nil, buttons, nil, tabs))
+	u.Win.SetContent(container.NewBorder(nil, nil, buttons, nil, u.tabs))
 	u.Win.Resize(fyne.NewSize(windowWidth, windowHigh))
 	u.Win.SetCloseIntercept(actions.Quit)
 
@@ -187,13 +192,6 @@ func fieldLabel(text string) *widget.Label {
 	return widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 }
 
-func timerEntry(text string) *widget.Entry {
-	e := widget.NewEntry()
-	e.SetText(text)
-
-	return e
-}
-
 func (u *UI) toggleTimer() {
 	if u.timerEnd.IsZero() {
 		u.startTimer()
@@ -205,7 +203,6 @@ func (u *UI) toggleTimer() {
 func (u *UI) startTimer() {
 	left, err := timerDuration(u.timerFields)
 	if err != nil || left <= 0 {
-		u.timerNote.SetText("Set a time")
 		return
 	}
 
@@ -214,6 +211,7 @@ func (u *UI) startTimer() {
 		e.Disable()
 	}
 	u.timerButton.SetText("Stop")
+	u.timerNote.SetText("Pausing X-Plane at " + u.timerEnd.Local().Format(time.TimeOnly))
 	u.showLeft(left)
 
 	done := make(chan struct{})
@@ -232,6 +230,18 @@ func (u *UI) startTimer() {
 			}
 		}
 	}()
+}
+
+func (u *UI) allowStart() {
+	if !u.timerEnd.IsZero() {
+		return
+	}
+
+	if left, err := timerDuration(u.timerFields); err != nil || left <= 0 {
+		u.timerButton.Disable()
+	} else {
+		u.timerButton.Enable()
+	}
 }
 
 func timerDuration(fields []*widget.Entry) (time.Duration, error) {
@@ -266,7 +276,7 @@ func (u *UI) tick(now time.Time) {
 
 	u.stopTimer()
 	u.showLeft(0)
-	u.timerNote.SetText("Time is up, pausing X-Plane at " + now.UTC().Format(zuluLayout))
+	u.timerNote.SetText("Time is up, pausing X-Plane at " + now.Local().Format(time.TimeOnly))
 	if u.pauseSim != nil {
 		u.pauseSim()
 	}
@@ -278,7 +288,14 @@ func (u *UI) showLeft(left time.Duration) {
 	u.timerHours.SetText(strconv.Itoa(h))
 	u.timerMinutes.SetText(strconv.Itoa(m))
 	u.timerSeconds.SetText(strconv.Itoa(sec))
-	u.timerNote.SetText(fmt.Sprintf("%02d:%02d:%02d", h, m, sec))
+	clock := fmt.Sprintf("%02d:%02d:%02d", h, m, sec)
+	u.timerLeft.SetText(clock)
+	u.setTimerTab("Timer (" + clock + ")")
+}
+
+func (u *UI) setTimerTab(text string) {
+	u.timerTab.Text = text
+	u.tabs.Refresh()
 }
 
 func (u *UI) stopTimer() {
@@ -288,6 +305,10 @@ func (u *UI) stopTimer() {
 		e.Enable()
 	}
 	u.timerButton.SetText("Start")
+	u.timerLeft.SetText("")
+	u.timerNote.SetText("")
+	u.setTimerTab("Timer")
+	u.allowStart()
 }
 
 func (u *UI) SigningIn() {
