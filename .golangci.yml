@@ -52,8 +52,8 @@ linters:
         - G104
   exclusions:
     rules:
-      # apitest and xplanetest are test code that happens to live in its own package
-      - path: (_test\.go|apitest/|xplanetest/)
+      # apitest, xplanetest and msfstest are test code that happens to live in its own package
+      - path: (_test\.go|apitest/|xplanetest/|msfstest/)
         linters:
           - errcheck
           - gosec
@@ -75,6 +75,11 @@ linters:
           - gosec
       # RREF puts a 4-byte little-endian int on the wire; the conversion is the protocol
       - path: internal/xplane/
+        text: G115
+        linters:
+          - gosec
+      # so does SimConnect
+      - path: internal/msfs/
         text: G115
         linters:
           - gosec

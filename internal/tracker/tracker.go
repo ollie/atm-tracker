@@ -11,6 +11,7 @@ import (
 	"github.com/ollie/atm-tracker/internal/api"
 	"github.com/ollie/atm-tracker/internal/auth"
 	"github.com/ollie/atm-tracker/internal/config"
+	"github.com/ollie/atm-tracker/internal/msfs"
 	"github.com/ollie/atm-tracker/internal/sim"
 	"github.com/ollie/atm-tracker/internal/xplane"
 	"golang.org/x/oauth2"
@@ -71,7 +72,10 @@ func New(app fyne.App, u Display, userAgent string) *Tracker {
 		appBase:   config.AppURL(app.Preferences()),
 		userAgent: userAgent,
 		store:     &auth.Store{Prefs: app.Preferences()},
-		sim:       &xplane.Sim{Addr: xplane.Addr},
+		sim: &sim.Autodetect{Sims: []sim.Sim{
+			&msfs.Sim{Dial: msfs.DialPipe},
+			&xplane.Sim{Addr: xplane.Addr},
+		}},
 	}
 }
 

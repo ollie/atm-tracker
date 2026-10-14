@@ -4,6 +4,7 @@ go 1.27.2
 
 require (
 	fyne.io/fyne/v2 v2.8.2
+	github.com/Microsoft/go-winio v0.6.4
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966

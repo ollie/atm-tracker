@@ -32,7 +32,7 @@ META_FLAGS := -app-id $(APP_ID) -app-version $(VERSION) -app-build $(BUILD_NUM) 
 all: build
 
 test: lint
-	go test -race ./... && go vet ./...
+	go test -race ./... && go vet ./... && GOOS=windows go vet ./internal/...
 
 lint:
 	@command -v golangci-lint >/dev/null || { echo "golangci-lint not found: brew install golangci-lint"; exit 1; }
