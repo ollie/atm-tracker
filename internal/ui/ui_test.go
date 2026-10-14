@@ -141,11 +141,11 @@ func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 func TestSetLiveTellsThePlayerWhetherTheSimIsTalking(t *testing.T) {
 	u := testUI(t)
 
-	u.SetLive(true)
-	assert.Equal(t, "Receiving", u.simValue.Text)
+	u.SetLive("X-Plane", true)
+	assert.Equal(t, "X-Plane (receiving)", u.simValue.Text)
 
-	u.SetLive(false)
-	assert.Equal(t, "Waiting for X-Plane", u.simValue.Text)
+	u.SetLive("X-Plane", false)
+	assert.Equal(t, "– (waiting for sim)", u.simValue.Text)
 }
 
 func TestSetProgressShowsTheLastEventInZulu(t *testing.T) {
@@ -295,7 +295,7 @@ func TestTimerCountsDownAndPausesTheSim(t *testing.T) {
 	assert.True(t, u.timerMinutes.Disabled())
 	assert.True(t, u.timerSeconds.Disabled())
 	assert.Equal(t, "00:02:00", u.timerLeft.Text, "the greyed-out fields are hard to read, the label repeats them")
-	assert.Equal(t, "Pausing X-Plane at "+u.timerEnd.Local().Format(time.TimeOnly), u.timerNote.Text)
+	assert.Equal(t, "Pausing the sim at "+u.timerEnd.Local().Format(time.TimeOnly), u.timerNote.Text)
 	assert.Equal(t, "Timer (00:02:00)", u.timerTab.Text, "the tab shows the time left from any tab")
 
 	u.tick(u.timerEnd.Add(-61 * time.Second))
@@ -320,7 +320,7 @@ func TestTimerCountsDownAndPausesTheSim(t *testing.T) {
 	assert.Equal(t, "0", u.timerSeconds.Text)
 	assert.True(t, u.timerButton.Disabled(), "0 h 0 m 0 s is nothing to start")
 	assert.Equal(t, "00:00:00", u.timerLeft.Text)
-	assert.Equal(t, "Time is up, pausing X-Plane at "+end.Local().Format(time.TimeOnly), u.timerNote.Text)
+	assert.Equal(t, "Time is up, pausing the sim at "+end.Local().Format(time.TimeOnly), u.timerNote.Text)
 	assert.Equal(t, "Timer (00:00:00)", u.timerTab.Text, "a timer that ran out says so until the next start")
 }
 

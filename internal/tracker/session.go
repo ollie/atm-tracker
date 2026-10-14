@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/ollie/atm-tracker/internal/api"
+	"github.com/ollie/atm-tracker/internal/sim"
 	"github.com/ollie/atm-tracker/internal/telemetry"
-	"github.com/ollie/atm-tracker/internal/xplane"
 )
 
 const windowSize = 100
@@ -22,9 +21,9 @@ type session struct {
 	api         *api.Client
 	ui          Display
 	onSignedOut func()
-	simAddr     string
+	sim         sim.Sim
 	timings     Timings
-	simTimings  xplane.Timings
+	simTimings  sim.Timings
 }
 
 func (s *session) run(ctx context.Context) {
@@ -65,51 +64,38 @@ func (s *session) fly(ctx context.Context, item *api.FlightInfo) {
 	s.ui.StartFlight(item)
 	log.Printf("flying %d, %s to %s", item.ID, item.Departure.Code, item.Arrival.Code)
 
-	addr, err := net.ResolveUDPAddr("udp", s.simAddr)
+	conn, err := s.sim.Open()
 	if err != nil {
-		log.Printf("resolve %s: %v", s.simAddr, err)
-		return
-	}
-
-	conn, err := net.ListenUDP("udp", nil) // nil laddr means 0.0.0.0
-	if err != nil {
-		log.Printf("listen: %v", err)
+		log.Printf("%v", err)
 		return
 	}
 
 	flightCtx, endFlight := context.WithCancel(ctx)
 	defer endFlight()
 
-	if err := xplane.Subscribe(conn, addr); err != nil {
-		log.Printf("%v", err)
-		_ = conn.Close()
-		return
-	}
+	updates := make(chan sim.Update, sim.UpdateBuffer)
+	snapshots := make(chan sim.Snapshot, windowSize)
 
-	updates := make(chan xplane.Update, xplane.UpdateBuffer)
-	snapshots := make(chan xplane.Snapshot, windowSize)
-
-	c := &xplane.Coordinator{
+	c := &sim.Coordinator{
 		Updates:     updates,
 		Snapshots:   snapshots,
-		Resubscribe: func() { logError(xplane.Subscribe(conn, addr)) },
-		SetLive:     s.ui.SetLive,
+		Resubscribe: func() { logError(conn.Resubscribe()) },
+		SetLive:     func(live bool) { s.ui.SetLive(s.sim.Name(), live) },
 		Timings:     s.simTimings,
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(3)
-	go func() { defer wg.Done(); xplane.RunReader(flightCtx, conn, updates, endFlight) }()
+	go func() { defer wg.Done(); conn.Run(flightCtx, updates, endFlight) }()
 	go func() { defer wg.Done(); c.Run(flightCtx) }()
 	go func() { defer wg.Done(); s.send(flightCtx, item, snapshots, endFlight) }()
 
 	<-flightCtx.Done()
-	xplane.Unsubscribe(conn, addr)
-	_ = conn.Close() // unblocks RunReader (ReadFromUDP → net.ErrClosed)
+	conn.Close()
 	wg.Wait()
 }
 
-func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-chan xplane.Snapshot, endFlight context.CancelFunc) {
+func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-chan sim.Snapshot, endFlight context.CancelFunc) {
 	pending := make([]telemetry.Position, 0, windowSize)
 	sendTicker := time.NewTicker(s.timings.Send)
 	defer sendTicker.Stop()

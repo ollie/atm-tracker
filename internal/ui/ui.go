@@ -212,7 +212,7 @@ func (u *UI) startTimer() {
 		e.Disable()
 	}
 	u.timerButton.SetText("Stop")
-	u.timerNote.SetText("Pausing X-Plane at " + u.timerEnd.Local().Format(time.TimeOnly))
+	u.timerNote.SetText("Pausing the sim at " + u.timerEnd.Local().Format(time.TimeOnly))
 	u.showLeft(left)
 
 	done := make(chan struct{})
@@ -277,7 +277,7 @@ func (u *UI) tick(now time.Time) {
 
 	u.stopTimer()
 	u.showLeft(0)
-	u.timerNote.SetText("Time is up, pausing X-Plane at " + now.Local().Format(time.TimeOnly))
+	u.timerNote.SetText("Time is up, pausing the sim at " + now.Local().Format(time.TimeOnly))
 	if u.pauseSim != nil {
 		u.pauseSim()
 	}
@@ -412,10 +412,10 @@ func (u *UI) resetNotes() {
 	u.renderNote()
 }
 
-func (u *UI) SetLive(live bool) {
-	text := "Waiting for X-Plane"
+func (u *UI) SetLive(simName string, live bool) {
+	text := "– (waiting for sim)"
 	if live {
-		text = "Receiving"
+		text = simName + " (receiving)"
 	}
 
 	fyne.Do(func() { u.simValue.SetText(text) })

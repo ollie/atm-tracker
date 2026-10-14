@@ -10,6 +10,9 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/ollie/atm-tracker/internal/sim"
+	"github.com/ollie/atm-tracker/internal/telemetry"
 )
 
 const (
@@ -18,16 +21,15 @@ const (
 	subscribeHz    = 1
 	requestBytes   = 413
 	replyPrologue  = "RREF"
-	UpdateBuffer   = 64
 
 	pauseOn     = "sim/operation/pause_on"
 	pauseToggle = "sim/operation/pause_toggle"
 	pausedIndex = 1
 	pausedHz    = 10
-	PauseSettle = time.Second
+	pauseSettle = time.Second
 )
 
-func Subscribe(conn *net.UDPConn, addr *net.UDPAddr) error {
+func subscribe(conn *net.UDPConn, addr *net.UDPAddr) error {
 	for idx, dataref := range datarefsMap {
 		if _, err := conn.WriteToUDP(makeRREF(subscribeHz, idx, dataref.name), addr); err != nil {
 			return fmt.Errorf("subscribe %s: %w", dataref.name, err)
@@ -37,14 +39,14 @@ func Subscribe(conn *net.UDPConn, addr *net.UDPAddr) error {
 	return nil
 }
 
-func Unsubscribe(conn *net.UDPConn, addr *net.UDPAddr) {
+func unsubscribe(conn *net.UDPConn, addr *net.UDPAddr) {
 	_ = conn.SetWriteDeadline(time.Now().Add(cleanupTimeout))
 	for idx, dataref := range datarefsMap {
 		_, _ = conn.WriteToUDP(makeRREF(0, idx, dataref.name), addr)
 	}
 }
 
-func Pause(addr string, settle time.Duration) error {
+func pause(addr string, settle time.Duration) error {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", addr, err)
@@ -114,7 +116,7 @@ func awaitPaused(conn *net.UDPConn, settle time.Duration) (bool, error) {
 	}
 }
 
-func RunReader(ctx context.Context, conn *net.UDPConn, updates chan<- Update, stop context.CancelFunc) {
+func runReader(ctx context.Context, conn *net.UDPConn, updates chan<- sim.Update, stop context.CancelFunc) {
 	buf := make([]byte, 2048)
 
 	for {
@@ -143,9 +145,15 @@ func RunReader(ctx context.Context, conn *net.UDPConn, updates chan<- Update, st
 			continue
 		}
 
-		for _, u := range decoded {
+		for _, v := range decoded {
+			item, ok := datarefsMap[v.Index]
+			if !ok {
+				log.Printf("unknown dataref at index %d", v.Index)
+				continue
+			}
+
 			select {
-			case updates <- u:
+			case updates <- func(p *telemetry.Position) { item.assign(p, v.Value) }:
 			case <-ctx.Done():
 				return // don't block on send during shutdown
 			}
@@ -153,17 +161,17 @@ func RunReader(ctx context.Context, conn *net.UDPConn, updates chan<- Update, st
 	}
 }
 
-func decodeRREF(data []byte) ([]Update, bool) {
+func decodeRREF(data []byte) ([]datarefValue, bool) {
 	if len(data) < 5 || string(data[0:4]) != replyPrologue {
 		return nil, false
 	}
 
 	body := data[5:]
-	updates := make([]Update, 0, len(body)/8)
+	updates := make([]datarefValue, 0, len(body)/8)
 	for ; len(body) >= 8; body = body[8:] {
 		idx := int32(binary.LittleEndian.Uint32(body[0:4]))
 		val := math.Float32frombits(binary.LittleEndian.Uint32(body[4:8]))
-		updates = append(updates, Update{idx, val})
+		updates = append(updates, datarefValue{idx, val})
 	}
 
 	return updates, true

@@ -29,6 +29,7 @@ type actualLoad struct {
 
 type spyDisplay struct {
 	mu       sync.Mutex
+	simName  string
 	live     bool
 	actual   actualLoad
 	note     string
@@ -57,10 +58,10 @@ func (d *spyDisplay) SetFlight(item *api.FlightInfo) {
 	d.flight = item
 }
 
-func (d *spyDisplay) SetLive(live bool) {
+func (d *spyDisplay) SetLive(simName string, live bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.live = live
+	d.simName, d.live = simName, live
 }
 
 func (d *spyDisplay) SetActual(payloadKg, fuelKg float32) {
@@ -81,10 +82,10 @@ func (d *spyDisplay) SetProgress(result *api.PositionsResult) {
 	d.progress = result
 }
 
-func (d *spyDisplay) Live() bool {
+func (d *spyDisplay) Live() (simName string, live bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.live
+	return d.simName, d.live
 }
 
 func (d *spyDisplay) Actual() actualLoad {

@@ -13,6 +13,9 @@ const (
 	Addr = "127.0.0.1:49000"
 
 	pausedDataref = "sim/time/paused"
+
+	meterToFeetCoef = 3.28084
+	mpsToKtsCoef    = 1.94384
 )
 
 type datarefMapItem struct {
@@ -20,7 +23,7 @@ type datarefMapItem struct {
 	assign func(*telemetry.Position, float32)
 }
 
-type Update struct {
+type datarefValue struct {
 	Index int32
 	Value float32
 }
@@ -53,15 +56,15 @@ var datarefsMap = map[int32]datarefMapItem{
 	},
 	7: {
 		name:   "sim/flightmodel/position/elevation", // meters MSL
-		assign: func(p *telemetry.Position, value float32) { p.AltitudeFt = telemetry.MetersToFeet(value) },
+		assign: func(p *telemetry.Position, value float32) { p.AltitudeFt = metersToFeet(value) },
 	},
 	8: {
 		name:   "sim/flightmodel/position/y_agl", // height above ground in m
-		assign: func(p *telemetry.Position, value float32) { p.HeightAglFt = telemetry.MetersToFeet(value) },
+		assign: func(p *telemetry.Position, value float32) { p.HeightAglFt = metersToFeet(value) },
 	},
 	9: {
 		name:   "sim/flightmodel/position/groundspeed", // m/s
-		assign: func(p *telemetry.Position, value float32) { p.GroundspeedKt = telemetry.MpsToKts(value) },
+		assign: func(p *telemetry.Position, value float32) { p.GroundspeedKt = mpsToKts(value) },
 	},
 	10: {
 		name: "sim/flightmodel/position/indicated_airspeed", // kias
@@ -69,15 +72,9 @@ var datarefsMap = map[int32]datarefMapItem{
 			p.IndicatedAirspeedKt = telemetry.Kts(telemetry.RoundToInt(value))
 		},
 	},
-	11: {
-		name: "sim/flightmodel/position/indicated_airspeed2", // kias
-		assign: func(p *telemetry.Position, value float32) {
-			p.IndicatedAirspeed2 = telemetry.Kts(telemetry.RoundToInt(value))
-		},
-	},
 	12: {
 		name:   "sim/flightmodel/position/true_airspeed", // m/s
-		assign: func(p *telemetry.Position, value float32) { p.TrueAirspeedKt = telemetry.MpsToKts(value) },
+		assign: func(p *telemetry.Position, value float32) { p.TrueAirspeedKt = mpsToKts(value) },
 	},
 	13: {
 		name:   "sim/flightmodel/misc/machno", // mach number
@@ -117,9 +114,17 @@ func init() {
 	for i := range telemetry.MaxEngines {
 		datarefsMap[engineDatarefAt+int32(i)] = datarefMapItem{
 			name:   fmt.Sprintf("sim/flightmodel2/engines/engine_is_burning_fuel[%d]", i),
-			assign: func(p *telemetry.Position, value float32) { p.SetEngineBurning(i, value) },
+			assign: func(p *telemetry.Position, value float32) { p.SetEngineBurning(i, value == 1) },
 		}
 	}
+}
+
+func metersToFeet(value float32) int {
+	return telemetry.RoundToInt(value * meterToFeetCoef)
+}
+
+func mpsToKts(value float32) telemetry.Kts {
+	return telemetry.Kts(telemetry.RoundToInt(value * mpsToKtsCoef))
 }
 
 func DatarefCount() int {

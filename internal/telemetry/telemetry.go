@@ -8,9 +8,6 @@ import (
 
 const (
 	MaxEngines = 8
-
-	meterToFeetCoef = 3.28084
-	mpsToKtsCoef    = 1.94384
 )
 
 type Kts int
@@ -39,13 +36,11 @@ type Position struct {
 	NumEngines            int       `json:"numEngines"`
 	EnginesRunning        int       `json:"enginesRunning"`
 
-	IndicatedAirspeed2 Kts `json:"-"`
-
 	engineBurning [MaxEngines]bool
 }
 
-func (p *Position) SetEngineBurning(idx int, value float32) {
-	p.engineBurning[idx] = value == 1
+func (p *Position) SetEngineBurning(idx int, burning bool) {
+	p.engineBurning[idx] = burning
 
 	running := 0
 	for _, burning := range p.engineBurning {
@@ -58,12 +53,4 @@ func (p *Position) SetEngineBurning(idx int, value float32) {
 
 func RoundToInt(value float32) int {
 	return int(math.Round(float64(value)))
-}
-
-func MetersToFeet(value float32) int {
-	return RoundToInt(value * meterToFeetCoef)
-}
-
-func MpsToKts(value float32) Kts {
-	return Kts(RoundToInt(value * mpsToKtsCoef))
 }

@@ -1,15 +1,19 @@
-package xplane
+package sim
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/ollie/atm-tracker/internal/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const settleTime = 50 * time.Millisecond
+const (
+	settleTime = 50 * time.Millisecond
+	waitTime   = 2 * time.Second
+)
 
 func testTimings() Timings {
 	return Timings{Snapshot: 5 * time.Millisecond, Silence: time.Hour, Resubscribe: time.Hour}
@@ -56,12 +60,11 @@ func startCoordinator(t *testing.T, tm Timings) *coordinatorHarness {
 }
 
 func (h *coordinatorHarness) pause(paused bool) {
-	value := float32(0)
-	if paused {
-		value = 1
-	}
+	h.updates <- func(p *telemetry.Position) { p.Paused = paused }
+}
 
-	h.updates <- Update{Index: 1, Value: value}
+func (h *coordinatorHarness) fuel(kg float32) {
+	h.updates <- func(p *telemetry.Position) { p.FuelKg = kg }
 }
 
 func (h *coordinatorHarness) next() Snapshot {
@@ -108,7 +111,7 @@ func TestCoordinatorIsQuietUntilTheSimTalks(t *testing.T) {
 
 func TestCoordinatorSnapshotsAreStampedForTheServer(t *testing.T) {
 	h := startCoordinator(t, testTimings())
-	h.updates <- Update{Index: 15, Value: 4200}
+	h.fuel(4200)
 
 	first := h.next()
 	assert.False(t, first.Flush, "a plain snapshot does not force a send")
@@ -121,7 +124,7 @@ func TestCoordinatorSnapshotsAreStampedForTheServer(t *testing.T) {
 
 func TestCoordinatorFlushesOnPauseAndStaysQuiet(t *testing.T) {
 	h := startCoordinator(t, testTimings())
-	h.updates <- Update{Index: 15, Value: 4200}
+	h.fuel(4200)
 	h.next()
 
 	h.pause(true)
@@ -139,7 +142,7 @@ func TestCoordinatorResubscribesWhenTheSimGoesQuiet(t *testing.T) {
 
 	assert.False(t, <-h.live)
 
-	h.updates <- Update{Index: 15, Value: 4200}
+	h.fuel(4200)
 	assert.True(t, <-h.live, "packets flowing means receiving")
 
 	select {
@@ -148,5 +151,5 @@ func TestCoordinatorResubscribesWhenTheSimGoesQuiet(t *testing.T) {
 		t.Fatal("the tracker did not re-subscribe after the silence")
 	}
 
-	assert.False(t, <-h.live, "silence means waiting for X-Plane again")
+	assert.False(t, <-h.live, "silence means waiting for the sim again")
 }

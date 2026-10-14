@@ -1,4 +1,4 @@
-package xplane
+package sim
 
 import (
 	"context"
@@ -65,12 +65,7 @@ func (c *Coordinator) Run(ctx context.Context) {
 				c.SetLive(true)
 			}
 
-			item, ok := datarefsMap[u.Index]
-			if !ok {
-				log.Printf("unknown dataref at index %d", u.Index)
-				continue
-			}
-			item.assign(&posData, u.Value)
+			u(&posData)
 
 		case <-silenceTicker.C:
 			if time.Since(lastPacket) < c.Timings.Silence {

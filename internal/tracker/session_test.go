@@ -8,6 +8,7 @@ import (
 
 	"github.com/ollie/atm-tracker/internal/api"
 	"github.com/ollie/atm-tracker/internal/api/apitest"
+	"github.com/ollie/atm-tracker/internal/sim"
 	"github.com/ollie/atm-tracker/internal/telemetry"
 	"github.com/ollie/atm-tracker/internal/xplane"
 	"github.com/ollie/atm-tracker/internal/xplane/xplanetest"
@@ -19,8 +20,8 @@ func testTimings() Timings {
 	return Timings{Send: 20 * time.Millisecond, FlightPoll: 20 * time.Millisecond}
 }
 
-func testSimTimings() xplane.Timings {
-	return xplane.Timings{Snapshot: 5 * time.Millisecond, Silence: time.Hour, Resubscribe: time.Hour}
+func testSimTimings() sim.Timings {
+	return sim.Timings{Snapshot: 5 * time.Millisecond, Silence: time.Hour, Resubscribe: time.Hour}
 }
 
 type flightHarness struct {
@@ -51,7 +52,7 @@ func startFlight(t *testing.T, item *api.FlightInfo) *flightHarness {
 		api:         client,
 		ui:          h.display,
 		onSignedOut: func() {},
-		simAddr:     h.sim.Addr,
+		sim:         &xplane.Sim{Addr: h.sim.Addr},
 		timings:     testTimings(),
 		simTimings:  testSimTimings(),
 	}
@@ -159,7 +160,9 @@ func TestAFlightShowsWhatTheAPISaysBack(t *testing.T) {
 	assert.Equal(t, "takeoff_flaps_set", progress.Events[0].Kind)
 	assert.Equal(t, occurred, progress.Events[0].OccurredAt)
 
-	assert.True(t, h.display.Live(), "packets are flowing, the sim pane must say so")
+	simName, live := h.display.Live()
+	assert.True(t, live, "packets are flowing, the sim pane must say so")
+	assert.Equal(t, "X-Plane", simName, "the Sim row names the sim")
 }
 
 func TestAFlightStopsWhenTheAPISaysItIsOver(t *testing.T) {

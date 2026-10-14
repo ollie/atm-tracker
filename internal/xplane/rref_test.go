@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ollie/atm-tracker/internal/sim"
 	"github.com/ollie/atm-tracker/internal/telemetry"
 	"github.com/ollie/atm-tracker/internal/xplane/xplanetest"
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,11 @@ const waitTime = 2 * time.Second
 func TestMain(m *testing.M) {
 	log.SetOutput(io.Discard)
 	os.Exit(m.Run())
+}
+
+func TestConversions(t *testing.T) {
+	assert.Equal(t, 3281, metersToFeet(1000))
+	assert.Equal(t, telemetry.Kts(194), mpsToKts(100))
 }
 
 func TestMakeRREF(t *testing.T) {
@@ -48,12 +54,12 @@ func TestEveryEngineHasItsOwnDataref(t *testing.T) {
 }
 
 func TestSubscribeAsksForEveryDataref(t *testing.T) {
-	sim := newSim(t)
-	conn, addr := trackerSocket(t, sim)
+	fakeSim := newSim(t)
+	conn, addr := trackerSocket(t, fakeSim)
 
-	require.NoError(t, Subscribe(conn, addr))
+	require.NoError(t, subscribe(conn, addr))
 
-	got := sim.Subscriptions()
+	got := fakeSim.Subscriptions()
 	require.Len(t, got, DatarefCount())
 
 	for index, dataref := range datarefsMap {
@@ -62,46 +68,68 @@ func TestSubscribeAsksForEveryDataref(t *testing.T) {
 }
 
 func TestUnsubscribeAsksForZeroHz(t *testing.T) {
-	sim := newSim(t)
-	conn, addr := trackerSocket(t, sim)
+	fakeSim := newSim(t)
+	conn, addr := trackerSocket(t, fakeSim)
 
-	require.NoError(t, Subscribe(conn, addr))
-	sim.Subscriptions()
+	require.NoError(t, subscribe(conn, addr))
+	fakeSim.Subscriptions()
 
-	Unsubscribe(conn, addr)
+	unsubscribe(conn, addr)
 
-	for index, dataref := range sim.Subscriptions() {
+	for index, dataref := range fakeSim.Subscriptions() {
 		assert.Zerof(t, dataref.Freq, "index %d still subscribed", index)
 	}
 }
 
 func TestReaderDecodesWhatTheSimSends(t *testing.T) {
-	sim, updates, _ := startReader(t)
+	fakeSim, updates, _ := startReader(t)
 
-	sim.Send(
+	fakeSim.Send(
 		xplanetest.Update{Index: 15, Value: 4200.5},
 		xplanetest.Update{Index: 16, Value: 1},
 	)
 
-	assert.Equal(t, Update{Index: 15, Value: 4200.5}, receive(t, updates))
-	assert.Equal(t, Update{Index: 16, Value: 1}, receive(t, updates))
+	var p telemetry.Position
+	receive(t, updates)(&p)
+	receive(t, updates)(&p)
+
+	assert.InDelta(t, 4200.5, p.FuelKg, 0.001)
+	assert.True(t, p.OnGround)
+}
+
+func TestReaderSkipsDatarefsItNeverAskedFor(t *testing.T) {
+	fakeSim, updates, ctx := startReader(t)
+
+	fakeSim.Send(
+		xplanetest.Update{Index: 999, Value: 1},
+		xplanetest.Update{Index: 13, Value: 0.78},
+	)
+
+	var p telemetry.Position
+	receive(t, updates)(&p)
+
+	assert.InDelta(t, 0.78, p.Mach, 0.001, "the known dataref still arrived")
+	assert.NoError(t, ctx.Err(), "a stray index must not end the flight")
 }
 
 func TestReaderIgnoresPacketsThatAreNotRREF(t *testing.T) {
-	sim, updates, ctx := startReader(t)
+	fakeSim, updates, ctx := startReader(t)
 
-	sim.SendRaw("BECN\x00hello")
-	sim.Send(xplanetest.Update{Index: 13, Value: 0.78})
+	fakeSim.SendRaw("BECN\x00hello")
+	fakeSim.Send(xplanetest.Update{Index: 13, Value: 0.78})
 
-	assert.Equal(t, Update{Index: 13, Value: 0.78}, receive(t, updates), "the good packet still arrived")
+	var p telemetry.Position
+	receive(t, updates)(&p)
+
+	assert.InDelta(t, 0.78, p.Mach, 0.001, "the good packet still arrived")
 	assert.NoError(t, ctx.Err(), "a junk packet must not end the flight")
 }
 
 func TestReaderEndsTheFlightWhenTheSocketCloses(t *testing.T) {
-	sim := newSim(t)
-	conn, _ := trackerSocket(t, sim)
+	fakeSim := newSim(t)
+	conn, _ := trackerSocket(t, fakeSim)
 
-	updates := make(chan Update, UpdateBuffer)
+	updates := make(chan sim.Update, sim.UpdateBuffer)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -110,7 +138,7 @@ func TestReaderEndsTheFlightWhenTheSocketCloses(t *testing.T) {
 
 	go func() {
 		defer close(done)
-		RunReader(ctx, conn, updates, func() { close(stopped); cancel() })
+		runReader(ctx, conn, updates, func() { close(stopped); cancel() })
 	}()
 
 	require.NoError(t, conn.Close())
@@ -119,23 +147,23 @@ func TestReaderEndsTheFlightWhenTheSocketCloses(t *testing.T) {
 	waitForClose(t, done, "the reader did not return")
 }
 
-func startReader(t *testing.T) (*xplanetest.Sim, <-chan Update, context.Context) {
+func startReader(t *testing.T) (*xplanetest.Sim, <-chan sim.Update, context.Context) {
 	t.Helper()
 
-	sim := newSim(t)
-	conn, addr := trackerSocket(t, sim)
+	fakeSim := newSim(t)
+	conn, addr := trackerSocket(t, fakeSim)
 
-	require.NoError(t, Subscribe(conn, addr))
-	sim.Subscriptions()
+	require.NoError(t, subscribe(conn, addr))
+	fakeSim.Subscriptions()
 
-	updates := make(chan Update, UpdateBuffer)
+	updates := make(chan sim.Update, sim.UpdateBuffer)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 
-	go func() { defer close(done); RunReader(ctx, conn, updates, cancel) }()
+	go func() { defer close(done); runReader(ctx, conn, updates, cancel) }()
 	t.Cleanup(func() { cancel(); _ = conn.Close(); <-done })
 
-	return sim, updates, ctx
+	return fakeSim, updates, ctx
 }
 
 func newSim(t *testing.T) *xplanetest.Sim {
@@ -144,10 +172,10 @@ func newSim(t *testing.T) *xplanetest.Sim {
 	return xplanetest.NewSim(t, DatarefCount())
 }
 
-func trackerSocket(t *testing.T, sim *xplanetest.Sim) (*net.UDPConn, *net.UDPAddr) {
+func trackerSocket(t *testing.T, fakeSim *xplanetest.Sim) (*net.UDPConn, *net.UDPAddr) {
 	t.Helper()
 
-	addr, err := net.ResolveUDPAddr("udp", sim.Addr)
+	addr, err := net.ResolveUDPAddr("udp", fakeSim.Addr)
 	require.NoError(t, err)
 
 	conn, err := net.ListenUDP("udp", nil)
@@ -157,7 +185,7 @@ func trackerSocket(t *testing.T, sim *xplanetest.Sim) (*net.UDPConn, *net.UDPAdd
 	return conn, addr
 }
 
-func receive(t *testing.T, updates <-chan Update) Update {
+func receive(t *testing.T, updates <-chan sim.Update) sim.Update {
 	t.Helper()
 
 	select {
@@ -165,7 +193,7 @@ func receive(t *testing.T, updates <-chan Update) Update {
 		return update
 	case <-time.After(waitTime):
 		t.Fatal("no dataref update arrived")
-		return Update{}
+		return nil
 	}
 }
 
@@ -180,60 +208,60 @@ func waitForClose(t *testing.T, done <-chan struct{}, message string) {
 }
 
 func TestPauseStopsAtPauseOnWhenTheSimObeys(t *testing.T) {
-	sim := newSim(t)
-	result := startPause(sim, waitTime)
+	fakeSim := newSim(t)
+	result := startPause(fakeSim, waitTime)
 
-	assert.Equal(t, makeRREF(pausedHz, pausedIndex, pausedDataref), sim.Packet(), "the pause state is read on this socket")
-	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(sim.Packet()))
+	assert.Equal(t, makeRREF(pausedHz, pausedIndex, pausedDataref), fakeSim.Packet(), "the pause state is read on this socket")
+	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(fakeSim.Packet()))
 
-	sim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
-	sim.Send(xplanetest.Update{Index: pausedIndex, Value: 1})
+	fakeSim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
+	fakeSim.Send(xplanetest.Update{Index: pausedIndex, Value: 1})
 
 	require.NoError(t, pauseResult(t, result))
-	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet(), "no toggle went out, the stale 0 must not count")
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), fakeSim.Packet(), "no toggle went out, the stale 0 must not count")
 }
 
 func TestPauseTogglesWhenTheSimIgnoresPauseOn(t *testing.T) {
-	sim := newSim(t)
-	result := startPause(sim, waitTime)
+	fakeSim := newSim(t)
+	result := startPause(fakeSim, waitTime)
 
-	sim.Packet()
-	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(sim.Packet()))
+	fakeSim.Packet()
+	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(fakeSim.Packet()))
 	for range int(waitTime / (time.Second / pausedHz)) {
-		sim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
+		fakeSim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
 	}
 
-	assert.Equal(t, "CMND\x00sim/operation/pause_toggle", string(sim.Packet()), "XP11 only knows the toggle")
-	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet())
+	assert.Equal(t, "CMND\x00sim/operation/pause_toggle", string(fakeSim.Packet()), "XP11 only knows the toggle")
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), fakeSim.Packet())
 	require.NoError(t, pauseResult(t, result))
 }
 
 func TestPauseDoesNotToggleWhenTheSimGoesQuiet(t *testing.T) {
-	sim := newSim(t)
-	result := startPause(sim, 300*time.Millisecond)
+	fakeSim := newSim(t)
+	result := startPause(fakeSim, 300*time.Millisecond)
 
-	sim.Packet()
-	sim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
-	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(sim.Packet()))
+	fakeSim.Packet()
+	fakeSim.Send(xplanetest.Update{Index: pausedIndex, Value: 0})
+	assert.Equal(t, "CMND\x00sim/operation/pause_on", string(fakeSim.Packet()))
 
 	require.ErrorContains(t, pauseResult(t, result), "quiet")
-	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet(), "a stalled XP12 has paused, toggling would unpause it")
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), fakeSim.Packet(), "a stalled XP12 has paused, toggling would unpause it")
 }
 
 func TestPauseFailsWhenXPlaneIsSilent(t *testing.T) {
-	sim := newSim(t)
-	result := startPause(sim, 50*time.Millisecond)
+	fakeSim := newSim(t)
+	result := startPause(fakeSim, 50*time.Millisecond)
 
-	sim.Packet()
-	sim.Packet()
+	fakeSim.Packet()
+	fakeSim.Packet()
 
 	require.ErrorContains(t, pauseResult(t, result), "answer")
-	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), sim.Packet(), "still unsubscribes")
+	assert.Equal(t, makeRREF(0, pausedIndex, pausedDataref), fakeSim.Packet(), "still unsubscribes")
 }
 
-func startPause(sim *xplanetest.Sim, settle time.Duration) <-chan error {
+func startPause(fakeSim *xplanetest.Sim, settle time.Duration) <-chan error {
 	result := make(chan error, 1)
-	go func() { result <- Pause(sim.Addr, settle) }()
+	go func() { result <- pause(fakeSim.Addr, settle) }()
 
 	return result
 }

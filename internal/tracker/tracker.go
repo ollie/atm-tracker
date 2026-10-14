@@ -11,6 +11,7 @@ import (
 	"github.com/ollie/atm-tracker/internal/api"
 	"github.com/ollie/atm-tracker/internal/auth"
 	"github.com/ollie/atm-tracker/internal/config"
+	"github.com/ollie/atm-tracker/internal/sim"
 	"github.com/ollie/atm-tracker/internal/xplane"
 	"golang.org/x/oauth2"
 )
@@ -29,7 +30,7 @@ type Display interface {
 	SetNoFlight()
 	StartFlight(item *api.FlightInfo)
 	SetFlight(item *api.FlightInfo)
-	SetLive(live bool)
+	SetLive(simName string, live bool)
 	SetActual(payloadKg, fuelKg float32)
 	SetNote(note string)
 	SetProgress(result *api.PositionsResult)
@@ -54,6 +55,7 @@ type Tracker struct {
 	appBase   string
 	userAgent string
 	store     *auth.Store
+	sim       sim.Sim
 
 	mu      sync.Mutex
 	stop    context.CancelFunc
@@ -69,6 +71,7 @@ func New(app fyne.App, u Display, userAgent string) *Tracker {
 		appBase:   config.AppURL(app.Preferences()),
 		userAgent: userAgent,
 		store:     &auth.Store{Prefs: app.Preferences()},
+		sim:       &xplane.Sim{Addr: xplane.Addr},
 	}
 }
 
@@ -142,9 +145,9 @@ func (t *Tracker) startSession(token *oauth2.Token) {
 		api:         client,
 		ui:          t.ui,
 		onSignedOut: t.endSession,
-		simAddr:     xplane.Addr,
+		sim:         t.sim,
 		timings:     DefaultTimings(),
-		simTimings:  xplane.DefaultTimings(),
+		simTimings:  sim.DefaultTimings(),
 	}
 
 	t.wg.Add(1)
@@ -153,6 +156,10 @@ func (t *Tracker) startSession(token *oauth2.Token) {
 		defer client.Close()
 		s.run(ctx)
 	}()
+}
+
+func (t *Tracker) PauseSim() error {
+	return t.sim.Pause()
 }
 
 func (t *Tracker) endSession() {
