@@ -1,4 +1,4 @@
-// Command atm-tracker streams X-Plane telemetry to Air Transport Magnate.
+// Command atm-tracker streams flight simulator telemetry to Air Transport Magnate.
 package main
 
 import (
@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -101,9 +103,10 @@ func startLogging(u *ui.UI) *os.File {
 	u.SetLogFile(path)
 
 	if path == "" {
-		log.Printf("ATM Tracker v%s: could not open %s, logging to screen only", version, logFileName)
+		log.Printf("ATM Tracker v%s on %s/%s: could not open %s, logging to screen only", version, runtime.GOOS, runtime.GOARCH, logFileName)
 	} else {
-		log.Printf("ATM Tracker v%s: logging to %s", version, path)
+		_ = debug.SetCrashOutput(file, debug.CrashOptions{})
+		log.Printf("ATM Tracker v%s on %s/%s: logging to %s", version, runtime.GOOS, runtime.GOARCH, path)
 	}
 
 	return file

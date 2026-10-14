@@ -59,6 +59,8 @@ func (s *Sim) Open() (sim.Connection, error) {
 		return nil, errors.New("MSFS is in its main menu")
 	}
 
+	log.Printf("%s has a flight running, defining %d variables", c.simVersion, len(simVars))
+
 	for _, v := range simVars {
 		if err := c.send(addToDataDefinition(definitionID, v.name, v.units)); err != nil {
 			_ = c.conn.Close()
@@ -140,12 +142,14 @@ func (s *Sim) open() (*connection, error) {
 		return nil, fmt.Errorf("MSFS answered the open with message %d", m.kind)
 	}
 
+	c.simVersion = decodeOpen(m.payload)
 	_ = conn.SetReadDeadline(time.Time{})
 	return c, nil
 }
 
 type connection struct {
-	conn net.Conn
+	conn       net.Conn
+	simVersion string
 
 	mu     sync.Mutex
 	sendID uint32
@@ -219,9 +223,11 @@ func (c *connection) Run(ctx context.Context, updates chan<- sim.Update, stop co
 			switch event {
 			case simEvent:
 				inFlight = data == 1
+				log.Printf("MSFS Sim event %d", data)
 				continue
 			case pauseEvent:
 				simPaused = data != 0
+				log.Printf("MSFS Pause_EX1 event %d", data)
 				update = pauseUpdate(simPaused)
 			default:
 				continue

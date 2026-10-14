@@ -63,6 +63,17 @@ func TestOpenDefinesEverySimVarAndSubscribes(t *testing.T) {
 	assert.ElementsMatch(t, []string{"Sim", "Pause_EX1"}, fakeSim.Subscriptions())
 }
 
+func TestOpenReplyNamesTheSim(t *testing.T) {
+	payload := make([]byte, 296)
+	copy(payload, "Microsoft Flight Simulator")
+	for i, v := range []uint32{11, 0, 282174, 999, 11, 0, 62651, 3} {
+		binary.LittleEndian.PutUint32(payload[256+4*i:], v)
+	}
+
+	assert.Equal(t, "Microsoft Flight Simulator 11.0 build 282174.999, SimConnect 11.0 build 62651.3", decodeOpen(payload))
+	assert.Equal(t, "short open reply", decodeOpen(payload[:100]))
+}
+
 func TestOpenFailsWhenThePipeIsNotThere(t *testing.T) {
 	s := &Sim{Dial: func() (net.Conn, error) { return nil, errors.New("no pipe") }}
 

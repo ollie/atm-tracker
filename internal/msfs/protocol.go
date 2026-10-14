@@ -1,6 +1,7 @@
 package msfs
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -181,12 +182,30 @@ func decodeSimObjectData(payload []byte, request uint32, count int) ([]float64, 
 	return values, nil
 }
 
+func decodeOpen(payload []byte) string {
+	if len(payload) < 288 {
+		return "short open reply"
+	}
+
+	v := func(at int) uint32 { return binary.LittleEndian.Uint32(payload[at:]) }
+	return fmt.Sprintf("%s %d.%d build %d.%d, SimConnect %d.%d build %d.%d",
+		cstring(payload[:256]), v(256), v(260), v(264), v(268), v(272), v(276), v(280), v(284))
+}
+
+func cstring(b []byte) string {
+	if end := bytes.IndexByte(b, 0); end >= 0 {
+		b = b[:end]
+	}
+
+	return string(b)
+}
+
 func decodeException(payload []byte) string {
 	if len(payload) < 12 {
 		return "short exception"
 	}
 
-	return fmt.Sprintf("exception %d for request %d, item %d",
+	return fmt.Sprintf("exception %d for send ID %d, item %d",
 		binary.LittleEndian.Uint32(payload[0:4]),
 		binary.LittleEndian.Uint32(payload[4:8]),
 		binary.LittleEndian.Uint32(payload[8:12]))

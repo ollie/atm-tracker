@@ -3,6 +3,7 @@ package sim
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 )
 
@@ -34,6 +35,9 @@ func (a *Autodetect) Open() (Connection, error) {
 			continue
 		}
 
+		for _, openErr := range errs {
+			log.Printf("%v", openErr)
+		}
 		return &candidateConnection{Connection: conn, autodetect: a, sim: s, preferred: a.Sims[:i]}, nil
 	}
 
@@ -66,25 +70,36 @@ func (a *Autodetect) currentSim() Sim {
 
 func (a *Autodetect) selectSim(s Sim) {
 	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.current == nil {
+		log.Printf("%s is the sim from now on", s.Name())
+	}
 	a.current = s
-	a.mu.Unlock()
 }
 
 type candidateConnection struct {
 	Connection
-	autodetect *Autodetect
-	sim        Sim
-	preferred  []Sim
+	autodetect     *Autodetect
+	sim            Sim
+	preferred      []Sim
+	lastProbeError string
 }
 
 func (c *candidateConnection) Resubscribe() error {
 	if c.autodetect.currentSim() == nil {
 		for _, s := range c.preferred {
-			if probe, err := s.Open(); err == nil {
-				probe.Close()
-				c.Close()
-				return nil
+			probe, err := s.Open()
+			if err != nil {
+				if err.Error() != c.lastProbeError {
+					log.Printf("%v", err)
+					c.lastProbeError = err.Error()
+				}
+				continue
 			}
+			probe.Close()
+			c.Close()
+			return nil
 		}
 	}
 
