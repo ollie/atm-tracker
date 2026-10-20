@@ -107,7 +107,7 @@ func (d *spyDisplay) Progress() *api.PositionsResult {
 }
 
 func TestTerminal(t *testing.T) {
-	for _, status := range terminalStatuses {
+	for _, status := range []string{"completed", "diverted", "cancelled", "rejected"} {
 		assert.Truef(t, terminal(status), "%s should end the flight", status)
 	}
 

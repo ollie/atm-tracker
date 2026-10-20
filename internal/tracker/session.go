@@ -15,7 +15,7 @@ import (
 
 const windowSize = 100
 
-var terminalStatuses = []string{"completed", "cancelled", "rejected"}
+var terminalStatuses = []string{"completed", "diverted", "cancelled", "rejected"}
 
 type session struct {
 	api         *api.Client

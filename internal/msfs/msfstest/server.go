@@ -87,13 +87,15 @@ func (s *Server) serve(conn net.Conn) {
 
 		size := binary.LittleEndian.Uint32(header[0:4])
 		payload := make([]byte, size-16)
+
+		s.mu.Lock()
 		if _, err := io.ReadFull(conn, payload); err != nil {
+			s.mu.Unlock()
 			return
 		}
 
 		kind := binary.LittleEndian.Uint32(header[8:12]) & 0x0fffffff
 
-		s.mu.Lock()
 		switch kind {
 		case requestOpen:
 			s.write(conn, recvOpen, make([]byte, 296))
