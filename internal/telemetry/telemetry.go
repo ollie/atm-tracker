@@ -37,6 +37,27 @@ type Position struct {
 	EnginesRunning        int       `json:"enginesRunning"`
 
 	engineBurning [MaxEngines]bool
+	totalMassKg   float32
+	emptyMassKg   float32
+}
+
+func (p *Position) SetTotalMassKg(massKg float32) {
+	p.totalMassKg = massKg
+	p.updatePayload()
+}
+
+func (p *Position) SetEmptyMassKg(massKg float32) {
+	p.emptyMassKg = massKg
+	p.updatePayload()
+}
+
+func (p *Position) SetFuelKg(massKg float32) {
+	p.FuelKg = massKg
+	p.updatePayload()
+}
+
+func (p *Position) updatePayload() {
+	p.PayloadKg = p.totalMassKg - p.emptyMassKg - p.FuelKg
 }
 
 func (p *Position) SetEngineBurning(idx int, burning bool) {

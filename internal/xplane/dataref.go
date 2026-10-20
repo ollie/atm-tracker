@@ -80,13 +80,17 @@ var datarefsMap = map[int32]datarefMapItem{
 		name:   "sim/flightmodel/misc/machno", // mach number
 		assign: func(p *telemetry.Position, value float32) { p.Mach = value },
 	},
+	11: {
+		name:   "sim/aircraft/weight/acf_m_empty",
+		assign: func(p *telemetry.Position, value float32) { p.SetEmptyMassKg(value) },
+	},
 	14: {
-		name:   "sim/flightmodel/weight/m_fixed", // XP11, XP12 too? With stations? Need to test
-		assign: func(p *telemetry.Position, value float32) { p.PayloadKg = value },
+		name:   "sim/flightmodel/weight/m_total",
+		assign: func(p *telemetry.Position, value float32) { p.SetTotalMassKg(value) },
 	},
 	15: {
-		name:   "sim/flightmodel/weight/m_fuel_total", // XP11, XP12 too? Need to test
-		assign: func(p *telemetry.Position, value float32) { p.FuelKg = value },
+		name:   "sim/flightmodel/weight/m_fuel_total",
+		assign: func(p *telemetry.Position, value float32) { p.SetFuelKg(value) },
 	},
 	16: {
 		name:   "sim/flightmodel/failures/onground_any",

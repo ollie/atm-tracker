@@ -128,7 +128,8 @@ func TestAFlightShowsWhatTheAircraftIsCarrying(t *testing.T) {
 	h := startFlight(t, testFlight())
 
 	h.sim.Send(
-		xplanetest.Update{Index: 14, Value: 1150},
+		xplanetest.Update{Index: 11, Value: 5000},
+		xplanetest.Update{Index: 14, Value: 6930},
 		xplanetest.Update{Index: 15, Value: 780},
 	)
 
