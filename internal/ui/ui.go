@@ -141,7 +141,7 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		u.deboardButton.Disable()
 		actions.Deboard()
 	})
-	u.deboardButton.Disable()
+	u.deboardButton.Hide()
 
 	flightPane := container.NewVBox(
 		container.New(layout.NewFormLayout(),
@@ -388,8 +388,9 @@ func (u *UI) showStatus(status string) {
 	u.statusValue.SetText(statusText(status))
 	if status == "taxi_to_gate" {
 		u.deboardButton.Enable()
+		u.deboardButton.Show()
 	} else {
-		u.deboardButton.Disable()
+		u.deboardButton.Hide()
 	}
 }
 
@@ -424,7 +425,7 @@ func (u *UI) resetFlight() {
 	u.targetsValue.SetText("–")
 	u.actualValue.SetText("–")
 	u.enginesValue.SetText("–")
-	u.deboardButton.Disable()
+	u.deboardButton.Hide()
 	u.simValue.SetText("Not tracking")
 	u.eventValue.SetText("–")
 }

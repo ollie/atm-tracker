@@ -3,6 +3,7 @@ package tracker
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -233,8 +234,7 @@ func TestDeboardDuringAnOutageTellsThePlayerToPressAgain(t *testing.T) {
 	h.sim.Send(xplanetest.Update{Index: 15, Value: 780})
 	h.pressDeboard()
 
-	assert.Eventually(t, func() bool { return h.display.Note() != "" }, waitTime, time.Millisecond, "the player was not told the press was dropped")
-	assert.Contains(t, h.display.Note(), "press Deboard again")
+	assert.Eventually(t, func() bool { return strings.Contains(h.display.Note(), "press Deboard again") }, waitTime, time.Millisecond, "the player was not told the press was dropped")
 	assert.Zero(t, h.server.PositionsAtDeboard(), "the deboard must not be sent while positions are still unsent")
 
 	h.settle()
