@@ -24,6 +24,7 @@ type session struct {
 	sim         sim.Sim
 	timings     Timings
 	simTimings  sim.Timings
+	deboards    <-chan struct{}
 }
 
 func (s *session) run(ctx context.Context) {
@@ -127,12 +128,7 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 
 		log.Printf("sent %d positions, flight is %s", len(pending), result.Status)
 		pending = pending[:0] // success: clear
-
-		s.ui.SetProgress(result)
-		if terminal(result.Status) {
-			log.Printf("flight %d is %s", item.ID, result.Status)
-			endFlight()
-		}
+		s.progress(result, item, endFlight)
 	}
 
 	for {
@@ -142,7 +138,7 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 
 		case p := <-snapshots:
 			pending = append(pending, p.Data)
-			s.ui.SetActual(p.Data.PayloadKg, p.Data.FuelKg)
+			s.ui.SetActual(p.Data.PayloadKg, p.Data.FuelKg, p.Data.EnginesRunning)
 			if len(pending) > windowSize {
 				pending = pending[1:] // cap: drop oldest unsent
 			}
@@ -152,7 +148,50 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 
 		case <-sendTicker.C:
 			flush()
+
+		case <-s.deboards:
+			flush()
+			if ctx.Err() != nil {
+				continue
+			}
+			if len(pending) > 0 {
+				s.ui.SetNote("cannot reach the Air Transport Magnate website, press Deboard again once it is back")
+				continue
+			}
+			s.deboard(ctx, item, endFlight)
 		}
+	}
+}
+
+func (s *session) deboard(ctx context.Context, item *api.FlightInfo, endFlight context.CancelFunc) {
+	result, err := s.api.Deboard(ctx, item.ID)
+
+	switch {
+	case ctx.Err() != nil:
+	case api.FailedWith(err, "flight_not_deboarding"):
+		log.Printf("the API would not deboard flight %d: %v", item.ID, err)
+		s.stillFlying(ctx, item, endFlight)
+	case api.FailedWith(err, "no_airport_at_landing_site"):
+		log.Printf("the API found no airport under flight %d", item.ID)
+		s.ui.SetNote("No airport here, taxi closer to the apron and press Deboard again")
+	case api.SignedOut(err):
+		log.Printf("the API no longer knows this tracker: %v", err)
+		s.onSignedOut()
+		endFlight()
+	case err != nil:
+		log.Printf("deboard failed: %v", err)
+		s.ui.SetNote(fmt.Sprintf("could not deboard: %v", err))
+	default:
+		log.Printf("deboarded, flight is %s", result.Status)
+		s.progress(result, item, endFlight)
+	}
+}
+
+func (s *session) progress(result *api.PositionsResult, item *api.FlightInfo, endFlight context.CancelFunc) {
+	s.ui.SetProgress(result)
+	if terminal(result.Status) {
+		log.Printf("flight %d is %s", item.ID, result.Status)
+		endFlight()
 	}
 }
 

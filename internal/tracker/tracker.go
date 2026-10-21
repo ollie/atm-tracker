@@ -32,7 +32,7 @@ type Display interface {
 	StartFlight(item *api.FlightInfo)
 	SetFlight(item *api.FlightInfo)
 	SetLive(simName string, live bool)
-	SetActual(payloadKg, fuelKg float32)
+	SetActual(payloadKg, fuelKg float32, enginesRunning int)
 	SetNote(note string)
 	SetProgress(result *api.PositionsResult)
 }
@@ -57,6 +57,7 @@ type Tracker struct {
 	userAgent string
 	store     *auth.Store
 	sim       sim.Sim
+	deboards  chan struct{}
 
 	mu      sync.Mutex
 	stop    context.CancelFunc
@@ -72,6 +73,7 @@ func New(app fyne.App, u Display, userAgent string) *Tracker {
 		appBase:   config.AppURL(app.Preferences()),
 		userAgent: userAgent,
 		store:     &auth.Store{Prefs: app.Preferences()},
+		deboards:  make(chan struct{}, 1),
 		sim: &sim.Autodetect{Sims: []sim.Sim{
 			&msfs.Sim{Dial: msfs.DialPipe},
 			&xplane.Sim{Addr: xplane.Addr},
@@ -152,6 +154,7 @@ func (t *Tracker) startSession(token *oauth2.Token) {
 		sim:         t.sim,
 		timings:     DefaultTimings(),
 		simTimings:  sim.DefaultTimings(),
+		deboards:    t.deboards,
 	}
 
 	t.wg.Add(1)
@@ -164,6 +167,13 @@ func (t *Tracker) startSession(token *oauth2.Token) {
 
 func (t *Tracker) PauseSim() error {
 	return t.sim.Pause()
+}
+
+func (t *Tracker) Deboard() {
+	select {
+	case t.deboards <- struct{}{}:
+	default:
+	}
 }
 
 func (t *Tracker) endSession() {

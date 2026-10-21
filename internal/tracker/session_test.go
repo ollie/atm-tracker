@@ -31,19 +31,27 @@ type flightHarness struct {
 	display *spyDisplay
 	session *session
 
-	stop context.CancelFunc
-	done chan struct{}
+	deboards chan struct{}
+	stop     context.CancelFunc
+	done     chan struct{}
 }
 
 func startFlight(t *testing.T, item *api.FlightInfo) *flightHarness {
 	t.Helper()
 
+	return startFlightWith(t, item, testTimings())
+}
+
+func startFlightWith(t *testing.T, item *api.FlightInfo, timings Timings) *flightHarness {
+	t.Helper()
+
 	h := &flightHarness{
-		t:       t,
-		sim:     xplanetest.NewSim(t, xplane.DatarefCount()),
-		server:  apitest.NewServer(t),
-		display: &spyDisplay{},
-		done:    make(chan struct{}),
+		t:        t,
+		sim:      xplanetest.NewSim(t, xplane.DatarefCount()),
+		server:   apitest.NewServer(t),
+		display:  &spyDisplay{},
+		deboards: make(chan struct{}, 1),
+		done:     make(chan struct{}),
 	}
 
 	client := api.New(h.server.URL, "ATM Tracker test", apitest.StaticToken())
@@ -53,8 +61,9 @@ func startFlight(t *testing.T, item *api.FlightInfo) *flightHarness {
 		ui:          h.display,
 		onSignedOut: func() {},
 		sim:         &xplane.Sim{Addr: h.sim.Addr},
-		timings:     testTimings(),
+		timings:     timings,
 		simTimings:  testSimTimings(),
+		deboards:    h.deboards,
 	}
 
 	ctx, stop := context.WithCancel(t.Context())
@@ -93,6 +102,17 @@ func (h *flightHarness) waitForEnd(message string) {
 	}
 
 	h.stop()
+}
+
+func (h *flightHarness) pressDeboard() {
+	h.t.Helper()
+
+	require.Eventually(h.t, func() bool { return h.display.Actual().fuelKg > 0 }, waitTime, time.Millisecond, "the sim never reached the tracker")
+	h.deboards <- struct{}{}
+}
+
+func atTheGate() Timings {
+	return Timings{Send: time.Hour, FlightPoll: 20 * time.Millisecond}
 }
 
 func testFlight() *api.FlightInfo {
@@ -139,6 +159,85 @@ func TestAFlightShowsWhatTheAircraftIsCarrying(t *testing.T) {
 	actual := h.display.Actual()
 	assert.InDelta(t, 1150, actual.payloadKg, 0.001, "the player cannot see the load the sim reported")
 	assert.InDelta(t, 780, actual.fuelKg, 0.001)
+}
+
+func TestAFlightShowsWhetherTheEnginesAreRunning(t *testing.T) {
+	h := startFlight(t, testFlight())
+
+	h.sim.Send(
+		xplanetest.Update{Index: 15, Value: 780},
+		xplanetest.Update{Index: 21, Value: 1},
+		xplanetest.Update{Index: 22, Value: 1},
+	)
+
+	h.server.WaitForPosts(1)
+	h.settle()
+
+	assert.Equal(t, 2, h.display.Actual().enginesRunning, "the Engines row cannot say whether the player may still deboard")
+}
+
+func TestPressingDeboardSendsTheLastPositionsAndSettlesTheFlight(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+	occurred := time.Date(2026, time.October, 21, 14, 2, 0, 0, time.UTC)
+	h.server.SetDeboardResult(api.PositionsResult{
+		Status: "completed",
+		Events: []api.Event{{Kind: "deboard", OccurredAt: occurred}},
+	})
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 780})
+	h.pressDeboard()
+
+	h.waitForEnd("the tracker kept flying after the player deboarded")
+
+	assert.Positive(t, h.server.PositionsAtDeboard(), "the API resolves the landing airport from the last stored position, it must have it before settling")
+	assert.Equal(t, 42, h.server.LastFlightID())
+
+	progress := h.display.Progress()
+	require.NotNil(t, progress, "the player was never told the flight settled")
+	assert.Equal(t, "completed", progress.Status)
+	require.Len(t, progress.Events, 1)
+	assert.Equal(t, "deboard", progress.Events[0].Kind)
+}
+
+func TestDeboardWhoseReplyWasLostEndsTheFlightOnTheNextLook(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+	h.server.FailDeboard(func(w http.ResponseWriter) bool { return apitest.ValidationError(w, "flight_not_deboarding") })
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 780})
+	h.pressDeboard()
+
+	h.waitForEnd("the API has no flight for the player, the tracker must stop flying the settled one")
+}
+
+func TestDeboardTheAPIRefusesTellsThePlayerWhy(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+	h.server.SetFlight(testFlight())
+	h.server.FailDeboard(func(w http.ResponseWriter) bool { return apitest.ValidationError(w, "no_airport_at_landing_site") })
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 780})
+	h.pressDeboard()
+
+	assert.Eventually(t, func() bool { return h.display.Note() != "" }, waitTime, time.Millisecond, "the refusal never reached the player")
+	assert.Contains(t, h.display.Note(), "No airport here")
+
+	h.settle()
+}
+
+func TestDeboardDuringAnOutageTellsThePlayerToPressAgain(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+	h.server.Fail(func(w http.ResponseWriter) bool {
+		w.WriteHeader(http.StatusInternalServerError)
+		return true
+	})
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 780})
+	h.pressDeboard()
+
+	assert.Eventually(t, func() bool { return h.display.Note() != "" }, waitTime, time.Millisecond, "the player was not told the press was dropped")
+	assert.Contains(t, h.display.Note(), "press Deboard again")
+	assert.Zero(t, h.server.PositionsAtDeboard(), "the deboard must not be sent while positions are still unsent")
+
+	h.settle()
 }
 
 func TestAFlightShowsWhatTheAPISaysBack(t *testing.T) {

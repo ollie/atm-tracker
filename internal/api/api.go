@@ -46,6 +46,10 @@ type PositionsRequest struct {
 	Positions []telemetry.Position `json:"positions"`
 }
 
+type DeboardRequest struct {
+	FlightID int `json:"flightId"`
+}
+
 type PositionsResult struct {
 	Status string  `json:"status"`
 	Events []Event `json:"events"`
@@ -143,13 +147,21 @@ func (c *Client) Flight(ctx context.Context) (*FlightInfo, error) {
 }
 
 func (c *Client) SendPositions(ctx context.Context, flightID int, batch []telemetry.Position) (*PositionsResult, error) {
+	return c.post(ctx, "/positions", PositionsRequest{FlightID: flightID, Positions: batch})
+}
+
+func (c *Client) Deboard(ctx context.Context, flightID int) (*PositionsResult, error) {
+	return c.post(ctx, "/deboard", DeboardRequest{FlightID: flightID})
+}
+
+func (c *Client) post(ctx context.Context, path string, body any) (*PositionsResult, error) {
 	var result PositionsResult
 
 	res, err := c.rest.R().
 		SetContext(ctx).
-		SetBody(PositionsRequest{FlightID: flightID, Positions: batch}).
+		SetBody(body).
 		SetResult(&result).
-		Post("/positions")
+		Post(path)
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}

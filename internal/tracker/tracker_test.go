@@ -23,8 +23,9 @@ func TestMain(m *testing.M) {
 }
 
 type actualLoad struct {
-	payloadKg float32
-	fuelKg    float32
+	payloadKg      float32
+	fuelKg         float32
+	enginesRunning int
 }
 
 type spyDisplay struct {
@@ -64,10 +65,10 @@ func (d *spyDisplay) SetLive(simName string, live bool) {
 	d.simName, d.live = simName, live
 }
 
-func (d *spyDisplay) SetActual(payloadKg, fuelKg float32) {
+func (d *spyDisplay) SetActual(payloadKg, fuelKg float32, enginesRunning int) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.actual = actualLoad{payloadKg: payloadKg, fuelKg: fuelKg}
+	d.actual = actualLoad{payloadKg: payloadKg, fuelKg: fuelKg, enginesRunning: enginesRunning}
 }
 
 func (d *spyDisplay) SetNote(note string) {

@@ -42,6 +42,7 @@ type Actions struct {
 	SignOut  func()
 	Quit     func()
 	PauseSim func()
+	Deboard  func()
 }
 
 type UI struct {
@@ -51,12 +52,14 @@ type UI struct {
 	statusValue  *widget.Label
 	targetsValue *widget.Label
 	actualValue  *widget.Label
+	enginesValue *widget.Label
 	simValue     *widget.Label
 	eventValue   *widget.Label
 	noteValue    *widget.Label
 
-	loginButton  *widget.Button
-	logoutButton *widget.Button
+	loginButton   *widget.Button
+	logoutButton  *widget.Button
+	deboardButton *widget.Button
 
 	logNote   *widget.Label
 	logButton *widget.Button
@@ -90,6 +93,7 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		statusValue:  widget.NewLabel(""),
 		targetsValue: widget.NewLabel(""),
 		actualValue:  widget.NewLabel(""),
+		enginesValue: widget.NewLabel(""),
 		simValue:     widget.NewLabel(""),
 		eventValue:   widget.NewLabel(""),
 		noteValue:    widget.NewLabel(""),
@@ -133,6 +137,11 @@ func New(app fyne.App, version string, actions Actions) *UI {
 	u.logoutButton = widget.NewButton("Log out", actions.SignOut)
 	u.logoutButton.Hide()
 	quitButton := widget.NewButton("Quit", actions.Quit)
+	u.deboardButton = widget.NewButton("Deboard", func() {
+		u.deboardButton.Disable()
+		actions.Deboard()
+	})
+	u.deboardButton.Disable()
 
 	flightPane := container.NewVBox(
 		container.New(layout.NewFormLayout(),
@@ -140,6 +149,7 @@ func New(app fyne.App, version string, actions Actions) *UI {
 			fieldLabel("Status"), u.statusValue,
 			fieldLabel("Targets"), u.targetsValue,
 			fieldLabel("Actual"), u.actualValue,
+			fieldLabel("Engines"), container.NewHBox(u.enginesValue, u.deboardButton),
 			fieldLabel("Sim"), u.simValue,
 			fieldLabel("Last event"), u.eventValue,
 		),
@@ -356,6 +366,7 @@ func (u *UI) StartFlight(item *api.FlightInfo) {
 	fyne.Do(func() {
 		u.eventValue.SetText("–")
 		u.actualValue.SetText("–")
+		u.enginesValue.SetText("–")
 		u.resetNotes()
 	})
 }
@@ -368,9 +379,18 @@ func (u *UI) SetFlight(item *api.FlightInfo) {
 	fyne.Do(func() {
 		u.unit = unit
 		u.flightValue.SetText(route)
-		u.statusValue.SetText(statusText(item.Status))
+		u.showStatus(item.Status)
 		u.targetsValue.SetText(targets)
 	})
+}
+
+func (u *UI) showStatus(status string) {
+	u.statusValue.SetText(statusText(status))
+	if status == "taxi_to_gate" {
+		u.deboardButton.Enable()
+	} else {
+		u.deboardButton.Disable()
+	}
 }
 
 func targetsText(item *api.FlightInfo) string {
@@ -403,6 +423,8 @@ func (u *UI) resetFlight() {
 	u.statusValue.SetText("–")
 	u.targetsValue.SetText("–")
 	u.actualValue.SetText("–")
+	u.enginesValue.SetText("–")
+	u.deboardButton.Disable()
 	u.simValue.SetText("Not tracking")
 	u.eventValue.SetText("–")
 }
@@ -421,8 +443,16 @@ func (u *UI) SetLive(simName string, live bool) {
 	fyne.Do(func() { u.simValue.SetText(text) })
 }
 
-func (u *UI) SetActual(payloadKg, fuelKg float32) {
-	fyne.Do(func() { u.actualValue.SetText(loadText(u.unit, float64(payloadKg), float64(fuelKg))) })
+func (u *UI) SetActual(payloadKg, fuelKg float32, enginesRunning int) {
+	engines := "Not running"
+	if enginesRunning > 0 {
+		engines = "Running"
+	}
+
+	fyne.Do(func() {
+		u.actualValue.SetText(loadText(u.unit, float64(payloadKg), float64(fuelKg)))
+		u.enginesValue.SetText(engines)
+	})
 }
 
 func (u *UI) SetNote(note string) {
@@ -442,7 +472,6 @@ func (u *UI) renderNote() {
 }
 
 func (u *UI) SetProgress(result *api.PositionsResult) {
-	status := statusText(result.Status)
 	event, warning := "", ""
 
 	for _, item := range result.Events {
@@ -453,7 +482,7 @@ func (u *UI) SetProgress(result *api.PositionsResult) {
 	}
 
 	fyne.Do(func() {
-		u.statusValue.SetText(status)
+		u.showStatus(result.Status)
 		if event != "" {
 			u.eventValue.SetText(event)
 		}

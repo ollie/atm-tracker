@@ -117,7 +117,7 @@ func TestTheActualLoadRendersInTheFlightsUnit(t *testing.T) {
 				Arrival:    api.AirportInfo{Code: "EGLL"},
 				WeightUnit: test.unit,
 			})
-			u.SetActual(1150.4, 779.6)
+			u.SetActual(1150.4, 779.6, 2)
 
 			assert.Equal(t, test.wants, u.actualValue.Text)
 		})
@@ -127,7 +127,8 @@ func TestTheActualLoadRendersInTheFlightsUnit(t *testing.T) {
 func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	u := testUI(t)
 	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
-	u.SetActual(1150, 780)
+	u.SetActual(1150, 780, 2)
+	require.False(t, u.deboardButton.Disabled())
 
 	u.SetNoFlight()
 
@@ -135,7 +136,45 @@ func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	assert.Equal(t, "–", u.statusValue.Text)
 	assert.Equal(t, "–", u.targetsValue.Text)
 	assert.Equal(t, "–", u.actualValue.Text)
+	assert.Equal(t, "–", u.enginesValue.Text)
+	assert.True(t, u.deboardButton.Disabled(), "there is no flight to deboard")
 	assert.Equal(t, "Not tracking", u.simValue.Text)
+}
+
+func TestTheEnginesRowSaysWhetherTheyAreRunning(t *testing.T) {
+	u := testUI(t)
+	u.StartFlight(&api.FlightInfo{Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
+	assert.Equal(t, "–", u.enginesValue.Text, "nothing is known before the first snapshot")
+
+	u.SetActual(1150, 780, 1)
+	assert.Equal(t, "Running", u.enginesValue.Text, "one engine of two is still running")
+
+	u.SetActual(1150, 780, 0)
+	assert.Equal(t, "Not running", u.enginesValue.Text)
+}
+
+func TestDeboardIsOfferedOnlyWhileTaxiingToTheGate(t *testing.T) {
+	pressed := 0
+	u := New(test.NewApp(), "0.0.0", Actions{Deboard: func() { pressed++ }})
+	assert.True(t, u.deboardButton.Disabled(), "nothing to deboard before a flight")
+
+	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
+	assert.False(t, u.deboardButton.Disabled(), "a tracker restarted at the gate must still offer it")
+
+	u.SetProgress(&api.PositionsResult{Status: "landed"})
+	assert.True(t, u.deboardButton.Disabled(), "still rolling out, the API would refuse")
+
+	u.SetProgress(&api.PositionsResult{Status: "taxi_to_gate"})
+	assert.False(t, u.deboardButton.Disabled())
+	test.Tap(u.deboardButton)
+	assert.Equal(t, 1, pressed)
+	assert.True(t, u.deboardButton.Disabled(), "a second tap before the API answers would queue a stale press")
+
+	u.SetProgress(&api.PositionsResult{Status: "taxi_to_gate"})
+	assert.False(t, u.deboardButton.Disabled(), "the API refused, the player may try again")
+
+	u.SetProgress(&api.PositionsResult{Status: "completed"})
+	assert.True(t, u.deboardButton.Disabled(), "the flight is over")
 }
 
 func TestSetLiveTellsThePlayerWhetherTheSimIsTalking(t *testing.T) {

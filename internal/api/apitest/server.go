@@ -34,6 +34,10 @@ type Server struct {
 	auth     string
 	revoked  bool
 	posts    chan struct{}
+
+	deboardResult      api.PositionsResult
+	deboardFailWith    func(w http.ResponseWriter) bool
+	positionsAtDeboard int
 }
 
 func NewServer(t *testing.T) *Server {
@@ -43,11 +47,14 @@ func NewServer(t *testing.T) *Server {
 		t:      t,
 		result: api.PositionsResult{Status: "enroute"},
 		posts:  make(chan struct{}, postDepth),
+
+		deboardResult: api.PositionsResult{Status: "completed"},
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/tracker/v1/flight", s.handleFlight)
 	mux.HandleFunc("POST /api/tracker/v1/positions", s.handlePositions)
+	mux.HandleFunc("POST /api/tracker/v1/deboard", s.handleDeboard)
 	mux.HandleFunc("POST /oauth/revoke", s.handleRevoke)
 
 	httpServer := httptest.NewServer(mux)
@@ -97,6 +104,27 @@ func (s *Server) handlePositions(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, result)
 }
 
+func (s *Server) handleDeboard(w http.ResponseWriter, r *http.Request) {
+	var input api.DeboardRequest
+	require.NoError(s.t, json.NewDecoder(r.Body).Decode(&input))
+
+	s.mu.Lock()
+	result, fail := s.deboardResult, s.deboardFailWith
+	s.positionsAtDeboard = 0
+	for _, batch := range s.batches {
+		s.positionsAtDeboard += len(batch)
+	}
+	s.flightID = input.FlightID
+	s.auth = r.Header.Get("Authorization")
+	s.mu.Unlock()
+
+	if fail != nil && fail(w) {
+		return
+	}
+
+	s.writeJSON(w, result)
+}
+
 func (s *Server) handleRevoke(w http.ResponseWriter, _ *http.Request) {
 	s.mu.Lock()
 	s.revoked = true
@@ -121,6 +149,25 @@ func (s *Server) Fail(with func(w http.ResponseWriter) bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.failWith = with
+}
+
+func (s *Server) SetDeboardResult(result api.PositionsResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deboardResult = result
+}
+
+func (s *Server) FailDeboard(with func(w http.ResponseWriter) bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deboardFailWith = with
+}
+
+func (s *Server) PositionsAtDeboard() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.positionsAtDeboard
 }
 
 func (s *Server) WaitForPosts(n int) {

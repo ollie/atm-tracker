@@ -62,6 +62,7 @@ func main() {
 	u := ui.New(fyneApp, version, ui.Actions{
 		SignIn:  func() { t.SignIn() },
 		SignOut: func() { t.SignOut() },
+		Deboard: func() { t.Deboard() },
 		Quit:    quit,
 		PauseSim: func() {
 			go func() {

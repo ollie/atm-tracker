@@ -110,6 +110,33 @@ func TestSendPositionsReportsARefusedToken(t *testing.T) {
 	assert.True(t, api.SignedOut(err))
 }
 
+func TestDeboardNamesTheFlightAndReadsTheResult(t *testing.T) {
+	occurred := time.Date(2026, time.October, 21, 14, 2, 0, 0, time.UTC)
+
+	server := apitest.NewServer(t)
+	server.SetDeboardResult(api.PositionsResult{
+		Status: "completed",
+		Events: []api.Event{{Kind: "deboard", OccurredAt: occurred}},
+	})
+
+	result, err := newClient(t, server).Deboard(t.Context(), 42)
+	require.NoError(t, err)
+
+	assert.Equal(t, "completed", result.Status)
+	require.Len(t, result.Events, 1)
+	assert.Equal(t, "deboard", result.Events[0].Kind)
+	assert.Equal(t, occurred, result.Events[0].OccurredAt)
+	assert.Equal(t, 42, server.LastFlightID(), "the request names the flight to settle")
+}
+
+func TestDeboardReportsAFlightNotAtTheGate(t *testing.T) {
+	server := apitest.NewServer(t)
+	server.FailDeboard(func(w http.ResponseWriter) bool { return apitest.ValidationError(w, "flight_not_deboarding") })
+
+	_, err := newClient(t, server).Deboard(t.Context(), 42)
+	assert.True(t, api.FailedWith(err, "flight_not_deboarding"))
+}
+
 func TestRevokeHandsTheTokenBack(t *testing.T) {
 	server := apitest.NewServer(t)
 
