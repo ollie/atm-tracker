@@ -60,7 +60,7 @@ func TestOpenDefinesEverySimVarAndSubscribes(t *testing.T) {
 		want = append(want, msfstest.Definition{Name: v.name, Units: v.units})
 	}
 	assert.Equal(t, want, fakeSim.Definitions(), "the data block is read in this order")
-	assert.ElementsMatch(t, []string{"Sim", "Pause_EX1"}, fakeSim.Subscriptions())
+	assert.ElementsMatch(t, []string{"Sim", "Pause_EX1", "Crashed"}, fakeSim.Subscriptions())
 }
 
 func TestOpenReplyNamesTheSim(t *testing.T) {
@@ -129,6 +129,15 @@ func TestReaderPassesThePauseStateOn(t *testing.T) {
 	fakeSim.SendEvent("Pause_EX1", 0)
 	receive(t, updates)(&p)
 	assert.False(t, p.Paused)
+}
+
+func TestReaderPassesTheCrashOn(t *testing.T) {
+	fakeSim, updates, _ := startReader(t)
+
+	var p telemetry.Position
+	fakeSim.SendEvent("Crashed", 0)
+	receive(t, updates)(&p)
+	assert.True(t, p.Crashed)
 }
 
 func TestReaderEndsTheFlightWhenMSFSQuits(t *testing.T) {

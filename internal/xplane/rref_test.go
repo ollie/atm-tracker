@@ -53,6 +53,21 @@ func TestEveryEngineHasItsOwnDataref(t *testing.T) {
 	assert.Equal(t, telemetry.MaxEngines, p.EnginesRunning, "the engine datarefs do not each light their own engine")
 }
 
+func TestTheCrashDatarefSetsTheFlagAndNeverClearsIt(t *testing.T) {
+	var p telemetry.Position
+	crashed := datarefsMap[29]
+	require.Equal(t, "sim/flightmodel2/misc/has_crashed", crashed.name)
+
+	crashed.assign(&p, 0)
+	assert.False(t, p.Crashed)
+
+	crashed.assign(&p, 1)
+	assert.True(t, p.Crashed)
+
+	crashed.assign(&p, 0)
+	assert.True(t, p.Crashed, "only the coordinator clears the flag, once it has sent it")
+}
+
 func TestSubscribeAsksForEveryDataref(t *testing.T) {
 	fakeSim := newSim(t)
 	conn, addr := trackerSocket(t, fakeSim)

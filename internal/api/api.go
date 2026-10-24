@@ -51,8 +51,9 @@ type DeboardRequest struct {
 }
 
 type PositionsResult struct {
-	Status string  `json:"status"`
-	Events []Event `json:"events"`
+	Status         string  `json:"status"`
+	Events         []Event `json:"events"`
+	PauseRequested bool    `json:"pauseRequested"`
 }
 
 type fieldError struct {

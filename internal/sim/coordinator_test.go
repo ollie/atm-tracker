@@ -137,6 +137,25 @@ func TestCoordinatorFlushesOnPauseAndStaysQuiet(t *testing.T) {
 	assert.False(t, h.next().Flush, "the flight goes back to plain snapshots")
 }
 
+func TestCoordinatorFlushesACrashOnceAndClearsIt(t *testing.T) {
+	h := startCoordinator(t, testTimings())
+	h.fuel(4200)
+	h.next()
+
+	h.updates <- func(p *telemetry.Position) { p.Crashed = true }
+
+	s := h.next()
+	for !s.Data.Crashed {
+		require.Falsef(t, s.Flush, "a snapshot before the crash asked for a flush: %+v", s.Data)
+		s = h.next()
+	}
+	assert.True(t, s.Flush, "a crash must reach the server at once")
+
+	after := h.next()
+	assert.False(t, after.Data.Crashed, "a crash the server ignored must not carry into later snapshots")
+	assert.False(t, after.Flush)
+}
+
 func TestCoordinatorResubscribesWhenTheSimGoesQuiet(t *testing.T) {
 	h := startCoordinator(t, silentSimTimings())
 

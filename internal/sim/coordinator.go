@@ -83,7 +83,7 @@ func (c *Coordinator) Run(ctx context.Context) {
 				continue
 			}
 
-			flush := posData.Paused != wasPaused
+			flush := posData.Paused != wasPaused || posData.Crashed
 			if posData.Paused && !flush {
 				continue
 			}
@@ -93,8 +93,11 @@ func (c *Coordinator) Run(ctx context.Context) {
 			posData.ReportedAt = time.Now().UTC()
 			log.Printf("Collected: %+v", posData)
 
+			snapshot := Snapshot{Data: posData, Flush: flush}
+			posData.Crashed = false
+
 			select {
-			case c.Snapshots <- Snapshot{Data: posData, Flush: flush}:
+			case c.Snapshots <- snapshot:
 			case <-ctx.Done():
 				return
 			}

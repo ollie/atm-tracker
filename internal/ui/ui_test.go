@@ -236,6 +236,17 @@ func TestWarningsOutliveTheBatchThatRaisedThem(t *testing.T) {
 	assert.Empty(t, u.noteValue.Text, "the next flight starts clean")
 }
 
+func TestACrashIsAWarning(t *testing.T) {
+	u := testUI(t)
+
+	u.SetProgress(&api.PositionsResult{
+		Status: "rejected",
+		Events: []api.Event{{Kind: "crashed", OccurredAt: time.Now()}},
+	})
+
+	assert.Equal(t, "The aircraft crashed, the flight was rejected", u.noteValue.Text)
+}
+
 func TestANoteIsClearedByTheNextSuccess(t *testing.T) {
 	u := testUI(t)
 

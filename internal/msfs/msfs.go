@@ -29,10 +29,12 @@ const (
 	pauseEvent   = 1
 	simEvent     = 2
 	pauseOnEvent = 3
+	crashedEvent = 4
 
 	pauseEventName   = "Pause_EX1"
 	simEventName     = "Sim"
 	pauseOnEventName = "PAUSE_ON"
+	crashedEventName = "Crashed"
 )
 
 type Sim struct {
@@ -72,6 +74,7 @@ func (s *Sim) Open() (sim.Connection, error) {
 		requestDataEverySecond(requestID, definitionID),
 		subscribeToSystemEvent(simEvent, simEventName),
 		subscribeToSystemEvent(pauseEvent, pauseEventName),
+		subscribeToSystemEvent(crashedEvent, crashedEventName),
 	} {
 		if err := c.send(p); err != nil {
 			_ = c.conn.Close()
@@ -229,6 +232,9 @@ func (c *connection) Run(ctx context.Context, updates chan<- sim.Update, stop co
 				simPaused = data != 0
 				log.Printf("MSFS Pause_EX1 event %d", data)
 				update = pauseUpdate(simPaused)
+			case crashedEvent:
+				log.Print("MSFS Crashed event")
+				update = crashUpdate
 			default:
 				continue
 			}
@@ -268,4 +274,8 @@ func dataUpdate(values []float64, simPaused bool) sim.Update {
 
 func pauseUpdate(simPaused bool) sim.Update {
 	return func(p *telemetry.Position) { p.Paused = simPaused }
+}
+
+func crashUpdate(p *telemetry.Position) {
+	p.Crashed = true
 }

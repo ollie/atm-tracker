@@ -120,6 +120,11 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 			s.onSignedOut()
 			endFlight()
 			return
+		case api.FailedWith(err, "no_airport_at_landing_site"):
+			log.Printf("the API stored %d positions but found no airport under flight %d", len(pending), item.ID)
+			pending = pending[:0]
+			s.ui.SetNote("No airport here, taxi closer to the apron and press Deboard again")
+			return
 		case err != nil:
 			log.Printf("send failed, keeping %d positions for retry: %v", len(pending), err)
 			s.ui.SetNote(fmt.Sprintf("cannot reach the Air Transport Magnate website, holding %d positions", len(pending)))
@@ -127,7 +132,11 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 		}
 
 		log.Printf("sent %d positions, flight is %s", len(pending), result.Status)
+		simPaused := pending[len(pending)-1].Paused
 		pending = pending[:0] // success: clear
+		if result.PauseRequested && !simPaused {
+			go s.pauseSim()
+		}
 		s.progress(result, item, endFlight)
 	}
 
@@ -192,6 +201,13 @@ func (s *session) progress(result *api.PositionsResult, item *api.FlightInfo, en
 	if terminal(result.Status) {
 		log.Printf("flight %d is %s", item.ID, result.Status)
 		endFlight()
+	}
+}
+
+func (s *session) pauseSim() {
+	log.Print("the website asked for a pause, pausing the sim")
+	if err := s.sim.Pause(); err != nil {
+		log.Printf("could not pause the sim: %v", err)
 	}
 }
 

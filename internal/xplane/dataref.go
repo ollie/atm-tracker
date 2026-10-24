@@ -112,6 +112,14 @@ var datarefsMap = map[int32]datarefMapItem{
 		name:   "sim/time/sim_speed", // sim time multiplier, 1 = real time
 		assign: func(p *telemetry.Position, value float32) { p.SimSpeedMultiplier = telemetry.RoundToInt(value) },
 	},
+	29: {
+		name: "sim/flightmodel2/misc/has_crashed",
+		assign: func(p *telemetry.Position, value float32) {
+			if value == 1 {
+				p.Crashed = true
+			}
+		},
+	},
 }
 
 func init() {

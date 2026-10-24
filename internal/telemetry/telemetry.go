@@ -16,6 +16,7 @@ type Position struct {
 	UUID                  string    `json:"uuid"`
 	ReportedAt            time.Time `json:"reportedAt"`
 	Paused                bool      `json:"paused"`
+	Crashed               bool      `json:"crashed"`
 	GroundSpeedMultiplier int       `json:"groundSpeedMultiplier"`
 	SimSpeedMultiplier    int       `json:"simSpeedMultiplier"`
 	OnGround              bool      `json:"onGround"`

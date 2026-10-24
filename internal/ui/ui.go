@@ -35,6 +35,7 @@ var warningKinds = map[string]string{
 	"not_at_departure": "The aircraft is not at the departure airport",
 	"diverted":         "Landed away from the filed arrival",
 	"fuel_anomaly":     "The fuel readings do not add up, the flight was rejected",
+	"crashed":          "The aircraft crashed, the flight was rejected",
 }
 
 type Actions struct {

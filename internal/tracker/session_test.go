@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,12 +26,23 @@ func testSimTimings() sim.Timings {
 	return sim.Timings{Snapshot: 5 * time.Millisecond, Silence: time.Hour, Resubscribe: time.Hour}
 }
 
+type pauseCountingSim struct {
+	*xplane.Sim
+	pauses atomic.Int32
+}
+
+func (s *pauseCountingSim) Pause() error {
+	s.pauses.Add(1)
+	return nil
+}
+
 type flightHarness struct {
-	t       *testing.T
-	sim     *xplanetest.Sim
-	server  *apitest.Server
-	display *spyDisplay
-	session *session
+	t          *testing.T
+	sim        *xplanetest.Sim
+	trackerSim *pauseCountingSim
+	server     *apitest.Server
+	display    *spyDisplay
+	session    *session
 
 	deboards chan struct{}
 	stop     context.CancelFunc
@@ -56,12 +68,13 @@ func startFlightWith(t *testing.T, item *api.FlightInfo, timings Timings) *fligh
 	}
 
 	client := api.New(h.server.URL, "ATM Tracker test", apitest.StaticToken())
+	h.trackerSim = &pauseCountingSim{Sim: &xplane.Sim{Addr: h.sim.Addr}}
 
 	h.session = &session{
 		api:         client,
 		ui:          h.display,
 		onSignedOut: func() {},
-		sim:         &xplane.Sim{Addr: h.sim.Addr},
+		sim:         h.trackerSim,
 		timings:     timings,
 		simTimings:  testSimTimings(),
 		deboards:    h.deboards,
@@ -265,6 +278,31 @@ func TestAFlightShowsWhatTheAPISaysBack(t *testing.T) {
 	assert.Equal(t, "X-Plane", simName, "the Sim row names the sim")
 }
 
+func TestAPauseTheWebsiteAsksForPausesTheSim(t *testing.T) {
+	h := startFlight(t, testFlight())
+	h.server.SetResult(api.PositionsResult{Status: "enroute", PauseRequested: true})
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 4200})
+
+	assert.Eventually(t, func() bool { return h.trackerSim.pauses.Load() > 0 }, waitTime, time.Millisecond, "the website asked for a pause, the sim kept running")
+	h.settle()
+}
+
+func TestAPauseTheWebsiteAsksForLeavesAPausedSimAlone(t *testing.T) {
+	h := startFlight(t, testFlight())
+	h.server.SetResult(api.PositionsResult{Status: "enroute", PauseRequested: true})
+
+	h.sim.Send(
+		xplanetest.Update{Index: 1, Value: 1},
+		xplanetest.Update{Index: 15, Value: 4200},
+	)
+
+	require.Eventually(t, func() bool { return h.display.Progress() != nil }, waitTime, time.Millisecond, "the reply never reached the tracker")
+	h.settle()
+
+	assert.Zero(t, h.trackerSim.pauses.Load(), "the paused sample is on its way, the sim is already paused")
+}
+
 func TestAFlightStopsWhenTheAPISaysItIsOver(t *testing.T) {
 	h := startFlight(t, testFlight())
 	h.server.SetResult(api.PositionsResult{Status: "completed"})
@@ -304,6 +342,23 @@ func TestAFlightHoldsPositionsTheAPIWouldNotTake(t *testing.T) {
 	assert.Positive(t, sizes[0])
 	assert.Greater(t, sizes[1], sizes[0], "a failed send must keep its positions for the retry")
 	assert.Contains(t, h.display.Note(), "cannot reach the Air Transport Magnate website")
+}
+
+func TestAFlightThatStoppedAwayFromAnyAirportSaysSoWithoutResending(t *testing.T) {
+	h := startFlight(t, testFlight())
+	h.server.Fail(func(w http.ResponseWriter) bool { return apitest.ValidationError(w, "no_airport_at_landing_site") })
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 4200})
+
+	h.server.WaitForPosts(2)
+	h.settle()
+
+	sentUUIDs := map[string]bool{}
+	for _, position := range h.server.Sent() {
+		assert.False(t, sentUUIDs[position.UUID], "the API stores the batch before it looks for an airport, resending it is pointless")
+		sentUUIDs[position.UUID] = true
+	}
+	assert.Contains(t, h.display.Note(), "No airport here")
 }
 
 func TestAFlightUnsubscribesWhenItEnds(t *testing.T) {
