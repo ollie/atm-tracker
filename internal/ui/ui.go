@@ -498,7 +498,11 @@ func (u *UI) SetProgress(result *api.PositionsResult) {
 }
 
 func statusText(status string) string {
-	return strings.ReplaceAll(status, "_", " ")
+	if status == "" {
+		return ""
+	}
+	text := strings.ReplaceAll(status, "_", " ")
+	return strings.ToUpper(text[:1]) + text[1:]
 }
 
 func (u *UI) SetLogFile(path string) {

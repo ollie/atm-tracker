@@ -62,7 +62,7 @@ func TestStartFlightShowsTheRouteAndTargets(t *testing.T) {
 	})
 
 	assert.Equal(t, "LKPR → EGLL", u.flightValue.Text)
-	assert.Equal(t, "boarding", u.statusValue.Text)
+	assert.Equal(t, "Boarding", u.statusValue.Text)
 	assert.Equal(t, "1200 kg payload, 800 kg fuel", u.targetsValue.Text)
 	assert.Equal(t, "–", u.actualValue.Text, "the previous flight's load must not linger until the first snapshot")
 	assert.Equal(t, "–", u.eventValue.Text)
@@ -199,8 +199,8 @@ func TestSetProgressShowsTheLastEventInZulu(t *testing.T) {
 		},
 	})
 
-	assert.Equal(t, "enroute", u.statusValue.Text)
-	assert.Equal(t, "takeoff flaps set at 09:13:00Z", u.eventValue.Text, "the newest event wins")
+	assert.Equal(t, "Enroute", u.statusValue.Text)
+	assert.Equal(t, "Takeoff flaps set at 09:13:00Z", u.eventValue.Text, "the newest event wins")
 }
 
 func TestSetProgressKeepsTheLastEventWhenABatchHasNone(t *testing.T) {
@@ -212,8 +212,8 @@ func TestSetProgressKeepsTheLastEventWhenABatchHasNone(t *testing.T) {
 
 	u.SetProgress(&api.PositionsResult{Status: "enroute"})
 
-	assert.Equal(t, "enroute", u.statusValue.Text)
-	assert.Equal(t, "taxi at 09:12:00Z", u.eventValue.Text, "a quiet batch must not blank the timeline")
+	assert.Equal(t, "Enroute", u.statusValue.Text)
+	assert.Equal(t, "Taxi at 09:12:00Z", u.eventValue.Text, "a quiet batch must not blank the timeline")
 }
 
 func TestWarningsOutliveTheBatchThatRaisedThem(t *testing.T) {
