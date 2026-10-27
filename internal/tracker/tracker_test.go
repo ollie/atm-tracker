@@ -8,9 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2/test"
 	"github.com/ollie/atm-tracker/internal/api"
+	"github.com/ollie/atm-tracker/internal/api/apitest"
 	"github.com/ollie/atm-tracker/internal/ui"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/oauth2"
 )
 
 const waitTime = 2 * time.Second
@@ -29,14 +32,16 @@ type actualLoad struct {
 }
 
 type spyDisplay struct {
-	mu       sync.Mutex
-	simName  string
-	live     bool
-	actual   actualLoad
-	note     string
-	progress *api.PositionsResult
-	flight   *api.FlightInfo
-	noFlight bool
+	mu               sync.Mutex
+	simName          string
+	live             bool
+	actual           actualLoad
+	note             string
+	progress         *api.PositionsResult
+	flight           *api.FlightInfo
+	noFlight         bool
+	minVersionWanted string
+	latestVersion    string
 }
 
 func (d *spyDisplay) SigningIn() {}
@@ -81,6 +86,30 @@ func (d *spyDisplay) SetProgress(result *api.PositionsResult) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.progress = result
+}
+
+func (d *spyDisplay) Unsupported(minVersion string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.minVersionWanted = minVersion
+}
+
+func (d *spyDisplay) MinVersionWanted() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.minVersionWanted
+}
+
+func (d *spyDisplay) UpdateAvailable(latestVersion string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.latestVersion = latestVersion
+}
+
+func (d *spyDisplay) LatestVersion() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.latestVersion
 }
 
 func (d *spyDisplay) Live() (simName string, live bool) {
@@ -136,4 +165,48 @@ func TestWaitForGivesUp(t *testing.T) {
 	defer close(done)
 
 	assert.False(t, waitFor(&wg, 10*time.Millisecond), "claimed work had finished while it was still running")
+}
+
+func TestASignedOutTrackerLearnsAtStartUpThatItIsUnsupported(t *testing.T) {
+	server := apitest.NewServer(t)
+	server.Fail(upgradeRequired)
+	display := &spyDisplay{}
+
+	tr := New(test.NewApp(), display, "0.0.12")
+	tr.base = server.URL
+	tr.Start()
+
+	assert.Eventually(t, func() bool { return display.MinVersionWanted() == "0.0.13" }, waitTime, time.Millisecond, "the player would log in only to be refused")
+}
+
+func TestATrackerWithADeadTokenLearnsAtStartUpThatItIsUnsupported(t *testing.T) {
+	server := apitest.NewServer(t)
+	server.Fail(upgradeRequired)
+	display := &spyDisplay{}
+
+	tr := New(test.NewApp(), display, "0.0.12")
+	tr.base = server.URL
+	tr.store.Save(&oauth2.Token{AccessToken: "expired", RefreshToken: "revoked", Expiry: time.Now().Add(-time.Hour)})
+	tr.Start()
+
+	assert.Eventually(t, func() bool { return display.MinVersionWanted() == "0.0.13" }, waitTime, time.Millisecond, "the refresh fails before any request reaches the API, so only the start-up check can tell")
+}
+
+func TestStartUpOffersOnlyANewerTracker(t *testing.T) {
+	server := apitest.NewServer(t)
+	server.SetLatestVersion("0.0.10")
+
+	for _, c := range []struct{ version, offeredVersion string }{
+		{"0.0.9", "0.0.10"},
+		{"0.0.10", ""},
+		{"0.0.11", ""},
+	} {
+		display := &spyDisplay{}
+		tr := New(test.NewApp(), display, c.version)
+		tr.base = server.URL
+
+		tr.checkVersion()
+
+		assert.Equalf(t, c.offeredVersion, display.LatestVersion(), "tracker v%s", c.version)
+	}
 }

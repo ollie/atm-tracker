@@ -76,3 +76,32 @@ func TestSignedOut(t *testing.T) {
 		})
 	}
 }
+
+func TestUnsupported(t *testing.T) {
+	refused := &Error{
+		status: http.StatusUpgradeRequired,
+		body:   errorResponse{Code: "tracker_unsupported", Params: map[string]string{"minVersion": "0.0.13", "version": "0.0.12"}},
+	}
+
+	cases := []struct {
+		name           string
+		err            error
+		wantMinVersion string
+		wantOK         bool
+	}{
+		{name: "the tracker is too old", err: refused, wantMinVersion: "0.0.13", wantOK: true},
+		{name: "the refusal is wrapped", err: fmt.Errorf("request: %w", refused), wantMinVersion: "0.0.13", wantOK: true},
+		{name: "the flight was refused", err: &Error{status: http.StatusUnprocessableEntity, body: errorResponse{Code: "flight_not_active"}}},
+		{name: "the API is unreachable", err: errors.New("connection refused")},
+		{name: "nothing went wrong", err: nil},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			minVersion, ok := Unsupported(c.err)
+
+			assert.Equal(t, c.wantOK, ok)
+			assert.Equal(t, c.wantMinVersion, minVersion)
+		})
+	}
+}

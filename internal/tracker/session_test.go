@@ -43,8 +43,10 @@ type flightHarness struct {
 	server     *apitest.Server
 	display    *spyDisplay
 	session    *session
+	client     *api.Client
 
 	deboards chan struct{}
+	ctx      context.Context
 	stop     context.CancelFunc
 	done     chan struct{}
 }
@@ -58,6 +60,15 @@ func startFlight(t *testing.T, item *api.FlightInfo) *flightHarness {
 func startFlightWith(t *testing.T, item *api.FlightInfo, timings Timings) *flightHarness {
 	t.Helper()
 
+	h := newFlightHarness(t, timings)
+	h.start(func(ctx context.Context) { h.session.fly(ctx, item) })
+
+	return h
+}
+
+func newFlightHarness(t *testing.T, timings Timings) *flightHarness {
+	t.Helper()
+
 	h := &flightHarness{
 		t:        t,
 		sim:      xplanetest.NewSim(t, xplane.DatarefCount()),
@@ -67,31 +78,35 @@ func startFlightWith(t *testing.T, item *api.FlightInfo, timings Timings) *fligh
 		done:     make(chan struct{}),
 	}
 
-	client := api.New(h.server.URL, "ATM Tracker test", apitest.StaticToken())
+	h.client = api.New(h.server.URL, "ATM Tracker test", apitest.StaticToken())
 	h.trackerSim = &pauseCountingSim{Sim: &xplane.Sim{Addr: h.sim.Addr}}
 
 	h.session = &session{
-		api:         client,
-		ui:          h.display,
-		onSignedOut: func() {},
-		sim:         h.trackerSim,
-		timings:     timings,
-		simTimings:  testSimTimings(),
-		deboards:    h.deboards,
+		api:           h.client,
+		ui:            h.display,
+		onSignedOut:   func() {},
+		onUnsupported: h.display.Unsupported,
+		sim:           h.trackerSim,
+		timings:       timings,
+		simTimings:    testSimTimings(),
+		deboards:      h.deboards,
 	}
 
-	ctx, stop := context.WithCancel(t.Context())
-	h.stop = stop
+	h.ctx, h.stop = context.WithCancel(t.Context())
+
+	return h
+}
+
+func (h *flightHarness) start(run func(ctx context.Context)) {
+	h.t.Helper()
 
 	go func() {
 		defer close(h.done)
-		defer client.Close()
-		h.session.fly(ctx, item)
+		defer h.client.Close()
+		run(h.ctx)
 	}()
 
 	h.sim.Subscriptions()
-
-	return h
 }
 
 func (h *flightHarness) settle() {
@@ -369,4 +384,67 @@ func TestAFlightUnsubscribesWhenItEnds(t *testing.T) {
 	for index, dataref := range h.sim.Subscriptions() {
 		assert.Zerof(t, dataref.Freq, "index %d is still subscribed, X-Plane would keep sending", index)
 	}
+}
+
+func upgradeRequired(w http.ResponseWriter) bool {
+	return apitest.UpgradeRequired(w, "0.0.13")
+}
+
+func TestPollStopsAnUnsupportedTracker(t *testing.T) {
+	server := apitest.NewServer(t)
+	server.Fail(upgradeRequired)
+	client := api.New(server.URL, "ATM Tracker test", apitest.StaticToken())
+	defer client.Close()
+	display := &spyDisplay{}
+
+	s := &session{
+		api:           client,
+		ui:            display,
+		onSignedOut:   func() { t.Error("a refused tracker must keep its token") },
+		onUnsupported: display.Unsupported,
+	}
+
+	s.poll(t.Context())
+
+	assert.Equal(t, "0.0.13", display.MinVersionWanted())
+}
+
+func TestAFlightStopsWhenTheAPIDropsThisTrackerVersion(t *testing.T) {
+	h := newFlightHarness(t, testTimings())
+	h.server.SetFlight(testFlight())
+	h.session.onSignedOut = func() { t.Error("a refused tracker must keep its token") }
+	h.start(h.session.poll)
+
+	var refusals atomic.Int32
+	h.server.Fail(func(w http.ResponseWriter) bool {
+		refusals.Add(1)
+		return upgradeRequired(w)
+	})
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 4200})
+
+	h.waitForEnd("the tracker kept flying after the API dropped its version")
+
+	assert.Equal(t, "0.0.13", h.display.MinVersionWanted())
+	assert.Equal(t, int32(1), refusals.Load(), "a refused tracker must not ask again")
+}
+
+func TestAPausedFlightStopsWhenTheAPIDropsThisTrackerVersion(t *testing.T) {
+	h := startFlight(t, testFlight())
+	h.server.Fail(upgradeRequired)
+
+	h.waitForEnd("the tracker kept asking for a flight after the API dropped its version")
+
+	assert.Equal(t, "0.0.13", h.display.MinVersionWanted())
+}
+
+func TestDeboardOnAnUnsupportedTrackerStopsTheFlight(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+	h.server.FailDeboard(upgradeRequired)
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 780})
+	h.pressDeboard()
+
+	h.waitForEnd("the tracker kept flying after the API dropped its version")
+
+	assert.Equal(t, "0.0.13", h.display.MinVersionWanted())
 }

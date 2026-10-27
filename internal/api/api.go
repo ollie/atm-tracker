@@ -35,6 +35,10 @@ type FlightInfo struct {
 	WeightUnit      string      `json:"weightUnit"`
 }
 
+type VersionInfo struct {
+	LatestVersion string `json:"latestVersion"`
+}
+
 type Event struct {
 	Kind       string            `json:"kind"`
 	Params     map[string]string `json:"params"`
@@ -62,6 +66,7 @@ type fieldError struct {
 
 type errorResponse struct {
 	Code   string                `json:"code"`
+	Params map[string]string     `json:"params"`
 	Fields map[string]fieldError `json:"fields"`
 }
 
@@ -99,6 +104,15 @@ func FailedWith(err error, reason string) bool {
 	return errors.As(err, &apiErr) && apiErr.reason() == reason
 }
 
+func Unsupported(err error) (minVersion string, ok bool) {
+	var apiErr *Error
+	if !errors.As(err, &apiErr) || apiErr.reason() != "tracker_unsupported" {
+		return "", false
+	}
+
+	return apiErr.body.Params["minVersion"], true
+}
+
 func SignedOut(err error) bool {
 	var apiErr *Error
 	if errors.As(err, &apiErr) && apiErr.status == http.StatusUnauthorized {
@@ -115,19 +129,39 @@ type Client struct {
 }
 
 func New(base, userAgent string, tokens oauth2.TokenSource) *Client {
+	c := NewAnonymous(base, userAgent)
+	c.rest.SetTransport(&oauth2.Transport{Source: tokens})
+
+	return c
+}
+
+func NewAnonymous(base, userAgent string) *Client {
 	return &Client{
 		rest: resty.New().
 			SetBaseURL(base+"/api/tracker/v1").
 			SetHeader("User-Agent", userAgent).
 			SetHeader("Content-Type", "application/json").
-			SetTimeout(requestTimeout).
-			SetTransport(&oauth2.Transport{Source: tokens}),
+			SetTimeout(requestTimeout),
 		revokeURL: base + RevokePath,
 	}
 }
 
 func (c *Client) Close() {
 	_ = c.rest.Close()
+}
+
+func (c *Client) CheckVersion(ctx context.Context) (string, error) {
+	var info VersionInfo
+
+	res, err := c.rest.R().SetContext(ctx).SetResult(&info).Get("/version")
+	if err != nil {
+		return "", fmt.Errorf("request: %w", err)
+	}
+	if res.IsStatusFailure() {
+		return "", newError(res)
+	}
+
+	return info.LatestVersion, nil
 }
 
 func (c *Client) Flight(ctx context.Context) (*FlightInfo, error) {

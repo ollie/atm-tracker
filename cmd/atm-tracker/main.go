@@ -79,9 +79,8 @@ func main() {
 		defer func() { _ = logFile.Close() }()
 	}
 
-	apiUserAgent := "ATM Tracker v" + version
-	t = tracker.New(fyneApp, u, apiUserAgent)
-	t.Resume()
+	t = tracker.New(fyneApp, u, version)
+	t.Start()
 
 	go func() {
 		<-appCtx.Done()

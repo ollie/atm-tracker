@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,8 @@ const (
 
 	prefAlwaysOnTop = "alwaysOnTop"
 )
+
+var latestReleaseURL = &url.URL{Scheme: "https", Host: "github.com", Path: "/ollie/atm-tracker/releases/latest"}
 
 var warningKinds = map[string]string{
 	"not_at_departure": "The aircraft is not at the departure airport",
@@ -57,6 +60,12 @@ type UI struct {
 	simValue     *widget.Label
 	eventValue   *widget.Label
 	noteValue    *widget.Label
+	upgradeValue *widget.Label
+	updateValue  *widget.Label
+
+	flightDetails *fyne.Container
+	upgradePane   *fyne.Container
+	updatePane    *fyne.Container
 
 	loginButton   *widget.Button
 	logoutButton  *widget.Button
@@ -98,6 +107,8 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		simValue:     widget.NewLabel(""),
 		eventValue:   widget.NewLabel(""),
 		noteValue:    widget.NewLabel(""),
+		upgradeValue: widget.NewLabel(""),
+		updateValue:  warningTitle(""),
 		logNote:      widget.NewLabel(""),
 		onTopNote:    widget.NewLabel("Takes effect on the next start"),
 		timerHours:   widget.NewEntry(),
@@ -144,7 +155,11 @@ func New(app fyne.App, version string, actions Actions) *UI {
 	})
 	u.deboardButton.Hide()
 
-	flightPane := container.NewVBox(
+	u.updatePane = container.NewHBox(u.updateValue, downloadLink())
+	u.updatePane.Hide()
+
+	u.flightDetails = container.NewVBox(
+		u.updatePane,
 		container.New(layout.NewFormLayout(),
 			fieldLabel("Flight"), u.flightValue,
 			fieldLabel("Status"), u.statusValue,
@@ -156,6 +171,15 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		),
 		u.noteValue,
 	)
+
+	u.upgradePane = container.NewVBox(
+		warningTitle("Tracker v"+version+" is no longer supported."),
+		u.upgradeValue,
+		downloadLink(),
+	)
+	u.upgradePane.Hide()
+
+	flightPane := container.NewVBox(u.flightDetails, u.upgradePane)
 
 	logPane := container.NewVBox(
 		container.New(layout.NewFormLayout(),
@@ -202,6 +226,16 @@ func (u *UI) requestAlwaysOnTop() {
 
 func fieldLabel(text string) *widget.Label {
 	return widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+}
+
+func warningTitle(text string) *widget.Label {
+	title := widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title.Importance = widget.WarningImportance
+	return title
+}
+
+func downloadLink() *widget.Hyperlink {
+	return widget.NewHyperlink("Download the latest version", latestReleaseURL)
 }
 
 func (u *UI) toggleTimer() {
@@ -346,11 +380,31 @@ func (u *UI) SignedIn() {
 func (u *UI) SignedOut() {
 	fyne.Do(func() {
 		u.logoutButton.Hide()
+		if u.upgradePane.Visible() {
+			return
+		}
+
 		u.loginButton.Show()
 		u.loginButton.Enable()
 		u.flightValue.SetText("Log in to start tracking")
 		u.resetFlight()
 		u.resetNotes()
+	})
+}
+
+func (u *UI) Unsupported(minVersion string) {
+	fyne.Do(func() {
+		u.loginButton.Hide()
+		u.upgradeValue.SetText("Upgrade to v" + minVersion + " or newer, then start the tracker again.")
+		u.flightDetails.Hide()
+		u.upgradePane.Show()
+	})
+}
+
+func (u *UI) UpdateAvailable(latestVersion string) {
+	fyne.Do(func() {
+		u.updateValue.SetText("Tracker v" + latestVersion + " is available.")
+		u.updatePane.Show()
 	})
 }
 

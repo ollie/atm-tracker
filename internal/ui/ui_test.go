@@ -9,6 +9,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 	"github.com/ollie/atm-tracker/internal/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -446,4 +447,68 @@ func TestTickWithoutAPauseActionDoesNotPanic(t *testing.T) {
 	test.Tap(u.timerButton)
 
 	assert.NotPanics(t, func() { u.tick(u.timerEnd) })
+}
+
+func TestUnsupportedSwapsTheFlightForTheUpgradeMessage(t *testing.T) {
+	u := New(test.NewApp(), "0.0.12", Actions{})
+	u.SignedIn()
+	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
+
+	u.Unsupported("0.0.13")
+
+	assert.False(t, u.flightDetails.Visible(), "the flight fields would read as if tracking went on")
+	assert.True(t, u.upgradePane.Visible())
+	assert.Equal(t, []string{
+		"Tracker v0.0.12 is no longer supported.",
+		"Upgrade to v0.0.13 or newer, then start the tracker again.",
+		"https://github.com/ollie/atm-tracker/releases/latest",
+	}, paneLines(u.upgradePane))
+	assert.True(t, u.logoutButton.Visible(), "the player may still log out")
+}
+
+func TestUnsupportedBeforeLogInHidesTheLogInButton(t *testing.T) {
+	u := testUI(t)
+	u.SignedOut()
+	require.True(t, u.loginButton.Visible())
+
+	u.Unsupported("0.0.13")
+
+	assert.False(t, u.loginButton.Visible(), "logging in would only end in the same message")
+}
+
+func TestSigningOutKeepsTheUpgradeMessage(t *testing.T) {
+	u := testUI(t)
+	u.SignedIn()
+	u.Unsupported("0.0.13")
+
+	u.SignedOut()
+
+	assert.True(t, u.upgradePane.Visible(), "a dead token at start-up would replace the message with Log in")
+	assert.False(t, u.loginButton.Visible())
+	assert.False(t, u.logoutButton.Visible())
+}
+
+func TestUpdateAvailableOffersTheDownloadAboveTheFlight(t *testing.T) {
+	u := testUI(t)
+	require.False(t, u.updatePane.Visible())
+
+	u.UpdateAvailable("0.0.14")
+
+	assert.True(t, u.updatePane.Visible())
+	assert.True(t, u.flightDetails.Visible(), "a supported tracker keeps tracking")
+	assert.Equal(t, []string{"Tracker v0.0.14 is available.", "https://github.com/ollie/atm-tracker/releases/latest"}, paneLines(u.updatePane))
+}
+
+func paneLines(pane *fyne.Container) []string {
+	var lines []string
+	for _, o := range pane.Objects {
+		switch o := o.(type) {
+		case *widget.Label:
+			lines = append(lines, o.Text)
+		case *widget.Hyperlink:
+			lines = append(lines, o.URL.String())
+		}
+	}
+
+	return lines
 }

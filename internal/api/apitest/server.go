@@ -38,6 +38,8 @@ type Server struct {
 	deboardResult      api.PositionsResult
 	deboardFailWith    func(w http.ResponseWriter) bool
 	positionsAtDeboard int
+
+	latestVersion string
 }
 
 func NewServer(t *testing.T) *Server {
@@ -52,6 +54,7 @@ func NewServer(t *testing.T) *Server {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/tracker/v1/version", s.handleVersion)
 	mux.HandleFunc("GET /api/tracker/v1/flight", s.handleFlight)
 	mux.HandleFunc("POST /api/tracker/v1/positions", s.handlePositions)
 	mux.HandleFunc("POST /api/tracker/v1/deboard", s.handleDeboard)
@@ -62,6 +65,19 @@ func NewServer(t *testing.T) *Server {
 	t.Cleanup(httpServer.Close)
 
 	return s
+}
+
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	latestVersion, fail := s.latestVersion, s.failWith
+	s.auth = r.Header.Get("Authorization")
+	s.mu.Unlock()
+
+	if fail != nil && fail(w) {
+		return
+	}
+
+	s.writeJSON(w, api.VersionInfo{LatestVersion: latestVersion})
 }
 
 func (s *Server) handleFlight(w http.ResponseWriter, r *http.Request) {
@@ -131,6 +147,12 @@ func (s *Server) handleRevoke(w http.ResponseWriter, _ *http.Request) {
 	s.mu.Unlock()
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) SetLatestVersion(latestVersion string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.latestVersion = latestVersion
 }
 
 func (s *Server) SetFlight(item *api.FlightInfo) {
@@ -246,6 +268,14 @@ func Unauthorized(w http.ResponseWriter) bool {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
 	_, _ = w.Write([]byte(`{"error":"unauthorized","code":"unauthorized"}`))
+
+	return true
+}
+
+func UpgradeRequired(w http.ResponseWriter, minVersion string) bool {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUpgradeRequired)
+	_, _ = w.Write([]byte(`{"error":"upgradeRequired","code":"tracker_unsupported","params":{"minVersion":"` + minVersion + `","version":"0.0.12"},"fields":null}`))
 
 	return true
 }

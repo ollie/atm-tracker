@@ -110,6 +110,18 @@ func TestSendPositionsReportsARefusedToken(t *testing.T) {
 	assert.True(t, api.SignedOut(err))
 }
 
+func TestFlightReportsAnUnsupportedTracker(t *testing.T) {
+	server := apitest.NewServer(t)
+	server.Fail(func(w http.ResponseWriter) bool { return apitest.UpgradeRequired(w, "0.0.13") })
+
+	_, err := newClient(t, server).Flight(t.Context())
+
+	minVersion, ok := api.Unsupported(err)
+	assert.True(t, ok)
+	assert.Equal(t, "0.0.13", minVersion)
+	assert.False(t, api.SignedOut(err), "an old tracker keeps its token, the upgraded one resumes with it")
+}
+
 func TestDeboardNamesTheFlightAndReadsTheResult(t *testing.T) {
 	occurred := time.Date(2026, time.October, 21, 14, 2, 0, 0, time.UTC)
 
@@ -152,4 +164,24 @@ func TestRequestsFailOnAnExpiredContext(t *testing.T) {
 
 	_, err := newClient(t, server).Flight(ctx)
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestCheckVersionAsksWithoutAToken(t *testing.T) {
+	server := apitest.NewServer(t)
+	client := api.NewAnonymous(server.URL, userAgent)
+	t.Cleanup(client.Close)
+
+	server.SetLatestVersion("0.0.14")
+
+	latestVersion, err := client.CheckVersion(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "0.0.14", latestVersion)
+	assert.Empty(t, server.LastAuth(), "a signed-out tracker has no token to send")
+
+	server.Fail(func(w http.ResponseWriter) bool { return apitest.UpgradeRequired(w, "0.0.13") })
+
+	_, err = client.CheckVersion(t.Context())
+	minVersion, ok := api.Unsupported(err)
+	assert.True(t, ok)
+	assert.Equal(t, "0.0.13", minVersion)
 }

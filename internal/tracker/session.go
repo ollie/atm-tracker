@@ -18,13 +18,14 @@ const windowSize = 100
 var terminalStatuses = []string{"completed", "diverted", "cancelled", "rejected"}
 
 type session struct {
-	api         *api.Client
-	ui          Display
-	onSignedOut func()
-	sim         sim.Sim
-	timings     Timings
-	simTimings  sim.Timings
-	deboards    <-chan struct{}
+	api           *api.Client
+	ui            Display
+	onSignedOut   func()
+	onUnsupported func(minVersion string)
+	sim           sim.Sim
+	timings       Timings
+	simTimings    sim.Timings
+	deboards      <-chan struct{}
 }
 
 func (s *session) run(ctx context.Context) {
@@ -41,10 +42,13 @@ func (s *session) run(ctx context.Context) {
 
 func (s *session) poll(ctx context.Context) {
 	item, err := s.api.Flight(ctx)
+	minVersion, refusal := api.Unsupported(err)
 
 	switch {
 	case ctx.Err() != nil:
 		return
+	case refusal:
+		s.onUnsupported(minVersion)
 	case api.SignedOut(err):
 		log.Printf("the API no longer knows this tracker: %v", err)
 		s.onSignedOut()
@@ -108,8 +112,13 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 		}
 
 		result, err := s.api.SendPositions(ctx, item.ID, pending)
+		minVersion, refusal := api.Unsupported(err)
 		switch {
 		case ctx.Err() != nil:
+			return
+		case refusal:
+			s.onUnsupported(minVersion)
+			endFlight()
 			return
 		case api.FailedWith(err, "flight_not_active"):
 			log.Printf("the API says flight %d is over", item.ID)
@@ -174,9 +183,13 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 
 func (s *session) deboard(ctx context.Context, item *api.FlightInfo, endFlight context.CancelFunc) {
 	result, err := s.api.Deboard(ctx, item.ID)
+	minVersion, refusal := api.Unsupported(err)
 
 	switch {
 	case ctx.Err() != nil:
+	case refusal:
+		s.onUnsupported(minVersion)
+		endFlight()
 	case api.FailedWith(err, "flight_not_deboarding"):
 		log.Printf("the API would not deboard flight %d: %v", item.ID, err)
 		s.stillFlying(ctx, item, endFlight)
@@ -213,9 +226,13 @@ func (s *session) pauseSim() {
 
 func (s *session) stillFlying(ctx context.Context, item *api.FlightInfo, endFlight context.CancelFunc) {
 	current, err := s.api.Flight(ctx)
+	minVersion, refusal := api.Unsupported(err)
 
 	switch {
 	case ctx.Err() != nil:
+	case refusal:
+		s.onUnsupported(minVersion)
+		endFlight()
 	case api.SignedOut(err):
 		log.Printf("the API no longer knows this tracker: %v", err)
 		s.onSignedOut()

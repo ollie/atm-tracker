@@ -14,6 +14,7 @@ import (
 	"github.com/ollie/atm-tracker/internal/msfs"
 	"github.com/ollie/atm-tracker/internal/sim"
 	"github.com/ollie/atm-tracker/internal/xplane"
+	"golang.org/x/mod/semver"
 	"golang.org/x/oauth2"
 )
 
@@ -35,6 +36,8 @@ type Display interface {
 	SetActual(payloadKg, fuelKg float32, enginesRunning int)
 	SetNote(note string)
 	SetProgress(result *api.PositionsResult)
+	Unsupported(minVersion string)
+	UpdateAvailable(latestVersion string)
 }
 
 type Timings struct {
@@ -54,6 +57,7 @@ type Tracker struct {
 	ui        Display
 	base      string
 	appBase   string
+	version   string
 	userAgent string
 	store     *auth.Store
 	sim       sim.Sim
@@ -65,13 +69,14 @@ type Tracker struct {
 	wg      sync.WaitGroup
 }
 
-func New(app fyne.App, u Display, userAgent string) *Tracker {
+func New(app fyne.App, u Display, version string) *Tracker {
 	return &Tracker{
 		app:       app,
 		ui:        u,
 		base:      config.BaseURL(app.Preferences()),
 		appBase:   config.AppURL(app.Preferences()),
-		userAgent: userAgent,
+		version:   version,
+		userAgent: "ATM Tracker v" + version,
 		store:     &auth.Store{Prefs: app.Preferences()},
 		deboards:  make(chan struct{}, 1),
 		sim: &sim.Autodetect{Sims: []sim.Sim{
@@ -81,7 +86,7 @@ func New(app fyne.App, u Display, userAgent string) *Tracker {
 	}
 }
 
-func (t *Tracker) Resume() {
+func (t *Tracker) Start() {
 	if t.appBase == t.base {
 		log.Printf("talking to %s", t.base)
 	} else {
@@ -91,10 +96,28 @@ func (t *Tracker) Resume() {
 	token := t.store.Load()
 	if token == nil {
 		t.ui.SignedOut()
-		return
+	} else {
+		t.startSession(token)
 	}
 
-	t.startSession(token)
+	go t.checkVersion()
+}
+
+func (t *Tracker) checkVersion() {
+	client := api.NewAnonymous(t.base, t.userAgent)
+	defer client.Close()
+
+	latestVersion, err := client.CheckVersion(context.Background())
+	minVersion, refusal := api.Unsupported(err)
+
+	switch {
+	case refusal:
+		t.unsupported(minVersion)
+	case err != nil:
+		log.Printf("could not check the tracker version: %v", err)
+	case semver.Compare("v"+latestVersion, "v"+t.version) > 0:
+		t.ui.UpdateAvailable(latestVersion)
+	}
 }
 
 func (t *Tracker) SignIn() {
@@ -148,13 +171,14 @@ func (t *Tracker) startSession(token *oauth2.Token) {
 	t.ui.SignedIn()
 
 	s := &session{
-		api:         client,
-		ui:          t.ui,
-		onSignedOut: t.endSession,
-		sim:         t.sim,
-		timings:     DefaultTimings(),
-		simTimings:  sim.DefaultTimings(),
-		deboards:    t.deboards,
+		api:           client,
+		ui:            t.ui,
+		onSignedOut:   t.endSession,
+		onUnsupported: t.unsupported,
+		sim:           t.sim,
+		timings:       DefaultTimings(),
+		simTimings:    sim.DefaultTimings(),
+		deboards:      t.deboards,
 	}
 
 	t.wg.Add(1)
@@ -176,7 +200,7 @@ func (t *Tracker) Deboard() {
 	}
 }
 
-func (t *Tracker) endSession() {
+func (t *Tracker) stopSession() {
 	t.mu.Lock()
 	stop := t.stop
 	t.stop, t.current = nil, nil
@@ -185,20 +209,22 @@ func (t *Tracker) endSession() {
 	if stop != nil {
 		stop()
 	}
+}
 
+func (t *Tracker) endSession() {
+	t.stopSession()
 	t.store.Clear()
 	t.ui.SignedOut()
 }
 
-func (t *Tracker) Shutdown() {
-	t.mu.Lock()
-	stop := t.stop
-	t.stop, t.current = nil, nil
-	t.mu.Unlock()
+func (t *Tracker) unsupported(minVersion string) {
+	log.Printf("the API no longer supports this tracker, it wants v%s or newer", minVersion)
+	t.stopSession()
+	t.ui.Unsupported(minVersion)
+}
 
-	if stop != nil {
-		stop()
-	}
+func (t *Tracker) Shutdown() {
+	t.stopSession()
 
 	if !waitFor(&t.wg, shutdownGrace) {
 		log.Printf("gave up after %s waiting for tracker goroutines", shutdownGrace)

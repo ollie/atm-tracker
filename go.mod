@@ -9,6 +9,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.12.1
+	golang.org/x/mod v0.42.0
 	golang.org/x/oauth2 v0.37.0
 	resty.dev/v3 v3.0.0-rc.4
 )
