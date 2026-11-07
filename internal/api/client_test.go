@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/ollie/atm-tracker/internal/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 )
 
 const userAgent = "ATM Tracker test"
@@ -105,9 +108,66 @@ func TestSendPositionsReportsAFinishedFlight(t *testing.T) {
 func TestSendPositionsReportsARefusedToken(t *testing.T) {
 	server := apitest.NewServer(t)
 	server.Fail(apitest.Unauthorized)
+	tokens := &renewableTokenSource{accessToken: "test-token"}
+	client := api.New(server.URL, userAgent, tokens)
+	defer client.Close()
 
-	_, err := newClient(t, server).SendPositions(t.Context(), 42, []telemetry.Position{{UUID: "abc"}})
+	_, err := client.SendPositions(t.Context(), 42, []telemetry.Position{{UUID: "abc"}})
 	assert.True(t, api.SignedOut(err))
+	assert.Equal(t, 1, tokens.expiries(), "one fresh token is tried, then the refusal stands")
+	assert.Equal(t, "Bearer fresh-token", server.LastAuth())
+}
+
+func TestARefusedTokenIsRenewedAndTheRequestRetriedOnce(t *testing.T) {
+	server := apitest.NewServer(t)
+	server.Fail(unauthorizedOnce())
+	tokens := &renewableTokenSource{accessToken: "test-token"}
+	client := api.New(server.URL, userAgent, tokens)
+	defer client.Close()
+
+	_, err := client.Flight(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 1, tokens.expiries())
+	assert.Equal(t, "Bearer fresh-token", server.LastAuth())
+}
+
+type renewableTokenSource struct {
+	mu          sync.Mutex
+	accessToken string
+	expired     int
+}
+
+func (r *renewableTokenSource) Token() (*oauth2.Token, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return &oauth2.Token{AccessToken: r.accessToken, TokenType: "Bearer"}, nil
+}
+
+func (r *renewableTokenSource) Expire() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.expired++
+	r.accessToken = "fresh-token"
+}
+
+func (r *renewableTokenSource) expiries() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.expired
+}
+
+func unauthorizedOnce() func(w http.ResponseWriter) bool {
+	var alreadyRefused atomic.Bool
+
+	return func(w http.ResponseWriter) bool {
+		if alreadyRefused.Swap(true) {
+			return false
+		}
+		return apitest.Unauthorized(w)
+	}
 }
 
 func TestFlightReportsAnUnsupportedTracker(t *testing.T) {

@@ -280,6 +280,12 @@ func UpgradeRequired(w http.ResponseWriter, minVersion string) bool {
 	return true
 }
 
-func StaticToken() oauth2.TokenSource {
-	return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token", TokenType: "Bearer"})
+type staticTokenSource struct {
+	oauth2.TokenSource
+}
+
+func (staticTokenSource) Expire() {}
+
+func StaticToken() api.TokenSource {
+	return staticTokenSource{oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token", TokenType: "Bearer"})}
 }

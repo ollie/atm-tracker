@@ -120,17 +120,24 @@ func SignedOut(err error) bool {
 	}
 
 	var retrieveErr *oauth2.RetrieveError
-	return errors.As(err, &retrieveErr)
+	return errors.As(err, &retrieveErr) && retrieveErr.ErrorCode == "invalid_grant"
+}
+
+type TokenSource interface {
+	oauth2.TokenSource
+	Expire()
 }
 
 type Client struct {
 	rest      *resty.Client
+	tokens    TokenSource
 	revokeURL string
 }
 
-func New(base, userAgent string, tokens oauth2.TokenSource) *Client {
+func New(base, userAgent string, tokens TokenSource) *Client {
 	c := NewAnonymous(base, userAgent)
 	c.rest.SetTransport(&oauth2.Transport{Source: tokens})
+	c.tokens = tokens
 
 	return c
 }
@@ -153,7 +160,9 @@ func (c *Client) Close() {
 func (c *Client) CheckVersion(ctx context.Context) (string, error) {
 	var info VersionInfo
 
-	res, err := c.rest.R().SetContext(ctx).SetResult(&info).Get("/version")
+	res, err := c.send(func() (*resty.Response, error) {
+		return c.rest.R().SetContext(ctx).SetResult(&info).Get("/version")
+	})
 	if err != nil {
 		return "", fmt.Errorf("request: %w", err)
 	}
@@ -167,7 +176,9 @@ func (c *Client) CheckVersion(ctx context.Context) (string, error) {
 func (c *Client) Flight(ctx context.Context) (*FlightInfo, error) {
 	var item FlightInfo
 
-	res, err := c.rest.R().SetContext(ctx).SetResult(&item).Get("/flight")
+	res, err := c.send(func() (*resty.Response, error) {
+		return c.rest.R().SetContext(ctx).SetResult(&item).Get("/flight")
+	})
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}
@@ -192,11 +203,9 @@ func (c *Client) Deboard(ctx context.Context, flightID int) (*PositionsResult, e
 func (c *Client) post(ctx context.Context, path string, body any) (*PositionsResult, error) {
 	var result PositionsResult
 
-	res, err := c.rest.R().
-		SetContext(ctx).
-		SetBody(body).
-		SetResult(&result).
-		Post(path)
+	res, err := c.send(func() (*resty.Response, error) {
+		return c.rest.R().SetContext(ctx).SetBody(body).SetResult(&result).Post(path)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}
@@ -208,7 +217,9 @@ func (c *Client) post(ctx context.Context, path string, body any) (*PositionsRes
 }
 
 func (c *Client) Revoke(ctx context.Context) error {
-	res, err := c.rest.R().SetContext(ctx).Post(c.revokeURL)
+	res, err := c.send(func() (*resty.Response, error) {
+		return c.rest.R().SetContext(ctx).Post(c.revokeURL)
+	})
 	if err != nil {
 		return fmt.Errorf("request: %w", err)
 	}
@@ -217,4 +228,14 @@ func (c *Client) Revoke(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Client) send(request func() (*resty.Response, error)) (*resty.Response, error) {
+	res, err := request()
+	if err != nil || res.StatusCode() != http.StatusUnauthorized || c.tokens == nil {
+		return res, err
+	}
+
+	c.tokens.Expire()
+	return request()
 }

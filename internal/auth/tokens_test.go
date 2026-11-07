@@ -2,9 +2,14 @@ package auth
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
+	"github.com/ollie/atm-tracker/internal/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -84,4 +89,120 @@ func TestSavingTokenSourcePassesTheRefusalOn(t *testing.T) {
 
 	_, err := source.Token()
 	assert.ErrorIs(t, err, refused)
+}
+
+type tokenEndpoint struct {
+	URL      string
+	refusals func(w http.ResponseWriter) bool
+	calls    atomic.Int32
+}
+
+func newTokenEndpoint(t *testing.T) *tokenEndpoint {
+	t.Helper()
+
+	e := &tokenEndpoint{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST "+TokenPath, func(w http.ResponseWriter, _ *http.Request) {
+		e.calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if e.refusals != nil && e.refusals(w) {
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"fresh","token_type":"Bearer","refresh_token":"second","expires_in":7200}`))
+	})
+
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	e.URL = server.URL
+
+	return e
+}
+
+func storedToken(t *testing.T, s *Store, expiresIn time.Duration) *oauth2.Token {
+	t.Helper()
+
+	token := &oauth2.Token{AccessToken: "old", RefreshToken: "first", TokenType: "Bearer", Expiry: time.Now().Add(expiresIn)}
+	s.Save(token)
+
+	return token
+}
+
+func TestSourceRefreshesAMinuteBeforeTheTokenExpires(t *testing.T) {
+	s := newStore(t)
+	endpoint := newTokenEndpoint(t)
+
+	source := s.Source(t.Context(), endpoint.URL, storedToken(t, s, 30*time.Second))
+
+	token, err := source.Token()
+	require.NoError(t, err)
+	assert.Equal(t, "fresh", token.AccessToken)
+	assert.Equal(t, int32(1), endpoint.calls.Load())
+	assert.Equal(t, "second", s.Load().RefreshToken, "the rotated refresh token is stored")
+}
+
+func TestSourceKeepsATokenWithMoreThanAMinuteLeft(t *testing.T) {
+	s := newStore(t)
+	endpoint := newTokenEndpoint(t)
+
+	source := s.Source(t.Context(), endpoint.URL, storedToken(t, s, 2*time.Minute))
+
+	token, err := source.Token()
+	require.NoError(t, err)
+	assert.Equal(t, "old", token.AccessToken)
+	assert.Equal(t, int32(0), endpoint.calls.Load())
+}
+
+func TestExpireForcesARefreshOnTheNextToken(t *testing.T) {
+	s := newStore(t)
+	endpoint := newTokenEndpoint(t)
+
+	source := s.Source(t.Context(), endpoint.URL, storedToken(t, s, time.Hour))
+
+	token, err := source.Token()
+	require.NoError(t, err)
+	assert.Equal(t, "old", token.AccessToken)
+
+	source.Expire()
+
+	token, err = source.Token()
+	require.NoError(t, err)
+	assert.Equal(t, "fresh", token.AccessToken)
+	assert.Equal(t, int32(1), endpoint.calls.Load())
+	assert.Equal(t, "second", s.Load().RefreshToken)
+
+	token, err = source.Token()
+	require.NoError(t, err)
+	assert.Equal(t, "fresh", token.AccessToken)
+	assert.Equal(t, int32(1), endpoint.calls.Load(), "the fresh token is reused until it nears expiry")
+}
+
+func TestARefusedRefreshTokenReadsAsSignedOut(t *testing.T) {
+	s := newStore(t)
+	endpoint := newTokenEndpoint(t)
+	endpoint.refusals = func(w http.ResponseWriter) bool {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"refresh token is invalid"}`))
+		return true
+	}
+
+	source := s.Source(t.Context(), endpoint.URL, storedToken(t, s, 30*time.Second))
+
+	_, err := source.Token()
+	assert.True(t, api.SignedOut(err))
+}
+
+func TestATokenEndpointOutageIsNotASignOut(t *testing.T) {
+	s := newStore(t)
+	endpoint := newTokenEndpoint(t)
+	endpoint.refusals = func(w http.ResponseWriter) bool {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return true
+	}
+
+	source := s.Source(t.Context(), endpoint.URL, storedToken(t, s, 30*time.Second))
+
+	_, err := source.Token()
+	require.Error(t, err)
+	assert.False(t, api.SignedOut(err), "a server hiccup must not throw the player's refresh token away")
+	assert.Equal(t, "first", s.Load().RefreshToken)
 }

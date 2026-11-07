@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
+	"github.com/ollie/atm-tracker/internal/api"
 	"golang.org/x/oauth2"
 )
 
-const prefToken = "oauthToken"
+const (
+	prefToken           = "oauthToken"
+	refreshBeforeExpiry = time.Minute
+)
 
 type Store struct {
 	Prefs fyne.Preferences
@@ -61,23 +66,41 @@ func (s *Store) Clear() {
 	s.Prefs.RemoveValue(prefToken)
 }
 
-func (s *Store) Source(ctx context.Context, base string, token *oauth2.Token) oauth2.TokenSource {
+func (s *Store) Source(ctx context.Context, base string, token *oauth2.Token) api.TokenSource {
+	renew := func(token *oauth2.Token) oauth2.TokenSource {
+		return oauth2.ReuseTokenSourceWithExpiry(token, Config(base, "", "").TokenSource(ctx, token), refreshBeforeExpiry)
+	}
+
 	return &savingTokenSource{
-		store: s,
-		inner: Config(base, "", "").TokenSource(ctx, token),
+		store:     s,
+		renew:     renew,
+		inner:     renew(token),
+		lastToken: token,
 	}
 }
 
 type savingTokenSource struct {
 	store *Store
-	inner oauth2.TokenSource
+	renew func(token *oauth2.Token) oauth2.TokenSource
+
+	mu        sync.Mutex
+	inner     oauth2.TokenSource
+	lastToken *oauth2.Token
 }
 
 func (s *savingTokenSource) Token() (*oauth2.Token, error) {
-	token, err := s.inner.Token()
+	s.mu.Lock()
+	inner := s.inner
+	s.mu.Unlock()
+
+	token, err := inner.Token()
 	if err != nil {
 		return nil, err
 	}
+
+	s.mu.Lock()
+	s.lastToken = token
+	s.mu.Unlock()
 
 	s.store.mu.Lock()
 	rotated := token.RefreshToken != s.store.current
@@ -88,4 +111,13 @@ func (s *savingTokenSource) Token() (*oauth2.Token, error) {
 	}
 
 	return token, nil
+}
+
+func (s *savingTokenSource) Expire() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	expiredToken := *s.lastToken
+	expiredToken.AccessToken = ""
+	s.inner = s.renew(&expiredToken)
 }

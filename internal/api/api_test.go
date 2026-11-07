@@ -64,8 +64,13 @@ func TestSignedOut(t *testing.T) {
 		{name: "the flight was refused", err: &Error{status: http.StatusUnprocessableEntity}, want: false},
 		{
 			name: "the refresh token was refused",
-			err:  &url.Error{Op: "Get", Err: &oauth2.RetrieveError{Response: &http.Response{StatusCode: http.StatusBadRequest}}},
+			err:  &url.Error{Op: "Get", Err: &oauth2.RetrieveError{Response: &http.Response{StatusCode: http.StatusUnauthorized}, ErrorCode: "invalid_grant"}},
 			want: true,
+		},
+		{
+			name: "the token endpoint is down",
+			err:  &url.Error{Op: "Get", Err: &oauth2.RetrieveError{Response: &http.Response{StatusCode: http.StatusServiceUnavailable}}},
+			want: false,
 		},
 		{name: "the API is unreachable", err: &url.Error{Op: "Get", Err: errors.New("connection refused")}, want: false},
 	}
