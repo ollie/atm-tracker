@@ -46,15 +46,13 @@ func (s *session) waitForNextPoll(ctx context.Context) {
 		case <-nextPoll:
 			return
 		case p := <-s.snapshots:
-			s.showActual(ctx, p)
+			s.showActual(p)
 		}
 	}
 }
 
-func (s *session) showActual(ctx context.Context, p telemetry.Position) {
-	if ctx.Err() == nil {
-		s.ui.SetActual(p.PayloadKg, p.FuelKg, p.EnginesRunning)
-	}
+func (s *session) showActual(p telemetry.Position) {
+	s.ui.SetActual(p.PayloadKg, p.FuelKg, p.EnginesRunning)
 }
 
 func (s *session) setLive(ctx context.Context, live bool) {
@@ -212,7 +210,7 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, endFlight cont
 			return
 
 		case p := <-s.snapshots:
-			s.showActual(ctx, p)
+			s.showActual(p)
 
 			sendNow := p.Paused != wasPaused || p.Crashed
 			if p.Paused && !sendNow {

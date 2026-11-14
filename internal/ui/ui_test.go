@@ -85,9 +85,30 @@ func TestTheUnitOfTheLastFlightIsUsedBeforeTheNextOne(t *testing.T) {
 	New(app, "0.0.0", Actions{}).SetFlight(&api.FlightInfo{WeightUnit: "lb"})
 
 	u := New(app, "0.0.0", Actions{})
+	u.SetLive("X-Plane", true)
 	u.SetActual(1000, 500, 0)
 
 	assert.Equal(t, "2205 lb payload, 1102 lb fuel", u.actualValue.Text, "with no flight the tracker would show kg next to a website in lb")
+}
+
+func TestASilentSimClearsWhatItReported(t *testing.T) {
+	u := testUI(t)
+	u.SignedIn()
+	u.SetLive("X-Plane", true)
+	u.SetActual(1150, 780, 2)
+
+	u.SetLive("X-Plane", false)
+
+	assert.Equal(t, "–", u.actualValue.Text, "the load of a sim that was quit reads as what is loaded now")
+	assert.Equal(t, "–", u.enginesValue.Text)
+	assert.Equal(t, "– (waiting for sim)", u.simValue.Text)
+
+	u.SetActual(1150, 780, 2)
+	assert.Equal(t, "–", u.actualValue.Text, "a reading taken before the silence must not bring the load back")
+
+	u.SetLive("X-Plane", true)
+	u.SetActual(1200, 800, 0)
+	assert.Equal(t, "1200 kg payload, 800 kg fuel", u.actualValue.Text)
 }
 
 func TestLoggingOutClearsWhatTheSimReported(t *testing.T) {
@@ -101,6 +122,9 @@ func TestLoggingOutClearsWhatTheSimReported(t *testing.T) {
 	assert.Equal(t, "–", u.actualValue.Text)
 	assert.Equal(t, "–", u.enginesValue.Text)
 	assert.Equal(t, "Not tracking", u.simValue.Text)
+
+	u.SetActual(1150, 780, 2)
+	assert.Equal(t, "–", u.actualValue.Text, "a reading that arrives during log out must not bring the load back")
 }
 
 func TestStartFlightShowsTheTargetsInThePlayersUnit(t *testing.T) {
@@ -152,6 +176,7 @@ func TestTheActualLoadRendersInTheFlightsUnit(t *testing.T) {
 				Arrival:    api.AirportInfo{Code: "EGLL"},
 				WeightUnit: test.unit,
 			})
+			u.SetLive("X-Plane", true)
 			u.SetActual(1150.4, 779.6, 2)
 
 			assert.Equal(t, test.wants, u.actualValue.Text)
@@ -182,6 +207,7 @@ func TestTheEnginesRowSaysWhetherTheyAreRunning(t *testing.T) {
 	u.SignedIn()
 	assert.Equal(t, "–", u.enginesValue.Text, "nothing is known before the first snapshot")
 
+	u.SetLive("X-Plane", true)
 	u.SetActual(1150, 780, 1)
 	assert.Equal(t, "Running", u.enginesValue.Text, "one engine of two is still running")
 

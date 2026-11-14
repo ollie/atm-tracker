@@ -94,6 +94,7 @@ type UI struct {
 	prefs        fyne.Preferences
 
 	unit    string
+	simLive bool
 	note    string
 	warning string
 }
@@ -489,9 +490,14 @@ func (u *UI) resetFlight() {
 }
 
 func (u *UI) resetSim() {
+	u.simLive = false
+	u.clearLoad()
+	u.simValue.SetText("Not tracking")
+}
+
+func (u *UI) clearLoad() {
 	u.actualValue.SetText("–")
 	u.enginesValue.SetText("–")
-	u.simValue.SetText("Not tracking")
 }
 
 func (u *UI) resetNotes() {
@@ -505,7 +511,13 @@ func (u *UI) SetLive(simName string, live bool) {
 		text = simName + " (receiving)"
 	}
 
-	fyne.Do(func() { u.simValue.SetText(text) })
+	fyne.Do(func() {
+		u.simLive = live
+		u.simValue.SetText(text)
+		if !live {
+			u.clearLoad()
+		}
+	})
 }
 
 func (u *UI) SetActual(payloadKg, fuelKg float32, enginesRunning int) {
@@ -515,6 +527,9 @@ func (u *UI) SetActual(payloadKg, fuelKg float32, enginesRunning int) {
 	}
 
 	fyne.Do(func() {
+		if !u.simLive {
+			return
+		}
 		u.actualValue.SetText(loadText(u.unit, float64(payloadKg), float64(fuelKg)))
 		u.enginesValue.SetText(engines)
 	})
