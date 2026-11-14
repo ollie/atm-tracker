@@ -26,16 +26,95 @@ type session struct {
 	timings       Timings
 	simTimings    sim.Timings
 	deboards      <-chan struct{}
+	snapshots     chan telemetry.Position
 }
 
 func (s *session) run(ctx context.Context) {
-	for {
+	for ctx.Err() == nil {
 		s.poll(ctx)
+		s.waitForNextPoll(ctx)
+	}
+}
 
+func (s *session) waitForNextPoll(ctx context.Context) {
+	nextPoll := time.After(s.timings.FlightPoll)
+
+	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-nextPoll:
+			return
+		case p := <-s.snapshots:
+			s.showActual(ctx, p)
+		}
+	}
+}
+
+func (s *session) showActual(ctx context.Context, p telemetry.Position) {
+	if ctx.Err() == nil {
+		s.ui.SetActual(p.PayloadKg, p.FuelKg, p.EnginesRunning)
+	}
+}
+
+func (s *session) setLive(ctx context.Context, live bool) {
+	if ctx.Err() == nil {
+		s.ui.SetLive(s.sim.Name(), live)
+	}
+}
+
+func (s *session) readSim(ctx context.Context) {
+	lastOpenError := ""
+
+	for ctx.Err() == nil {
+		conn, err := s.sim.Open()
+		switch {
+		case err == nil:
+			lastOpenError = ""
+			s.readConnection(ctx, conn)
+		case err.Error() != lastOpenError:
+			log.Printf("%v", err)
+			lastOpenError = err.Error()
+		}
+
+		select {
+		case <-ctx.Done():
 		case <-time.After(s.timings.FlightPoll):
+		}
+	}
+}
+
+func (s *session) readConnection(ctx context.Context, conn sim.Connection) {
+	connCtx, closeConn := context.WithCancel(ctx)
+	defer closeConn()
+
+	updates := make(chan sim.Update, sim.UpdateBuffer)
+
+	c := &sim.Coordinator{
+		Updates:     updates,
+		Snapshots:   s.snapshots,
+		Resubscribe: func() { logError(conn.Resubscribe()) },
+		SetLive:     func(live bool) { s.setLive(ctx, live) },
+		Timings:     s.simTimings,
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); conn.Run(connCtx, updates, closeConn) }()
+	go func() { defer wg.Done(); c.Run(connCtx) }()
+
+	<-connCtx.Done()
+	conn.Close()
+	wg.Wait()
+	s.setLive(ctx, false)
+}
+
+func (s *session) discardQueuedSnapshots() {
+	for {
+		select {
+		case <-s.snapshots:
+		default:
+			return
 		}
 	}
 }
@@ -69,38 +148,16 @@ func (s *session) fly(ctx context.Context, item *api.FlightInfo) {
 	s.ui.StartFlight(item)
 	log.Printf("flying %d, %s to %s", item.ID, item.Departure.Code, item.Arrival.Code)
 
-	conn, err := s.sim.Open()
-	if err != nil {
-		log.Printf("%v", err)
-		return
-	}
+	s.discardQueuedSnapshots()
 
 	flightCtx, endFlight := context.WithCancel(ctx)
 	defer endFlight()
 
-	updates := make(chan sim.Update, sim.UpdateBuffer)
-	snapshots := make(chan sim.Snapshot, windowSize)
-
-	c := &sim.Coordinator{
-		Updates:     updates,
-		Snapshots:   snapshots,
-		Resubscribe: func() { logError(conn.Resubscribe()) },
-		SetLive:     func(live bool) { s.ui.SetLive(s.sim.Name(), live) },
-		Timings:     s.simTimings,
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() { defer wg.Done(); conn.Run(flightCtx, updates, endFlight) }()
-	go func() { defer wg.Done(); c.Run(flightCtx) }()
-	go func() { defer wg.Done(); s.send(flightCtx, item, snapshots, endFlight) }()
-
-	<-flightCtx.Done()
-	conn.Close()
-	wg.Wait()
+	s.send(flightCtx, item, endFlight)
 }
 
-func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-chan sim.Snapshot, endFlight context.CancelFunc) {
+func (s *session) send(ctx context.Context, item *api.FlightInfo, endFlight context.CancelFunc) {
+	wasPaused := false
 	pending := make([]telemetry.Position, 0, windowSize)
 	sendTicker := time.NewTicker(s.timings.Send)
 	defer sendTicker.Stop()
@@ -154,13 +211,21 @@ func (s *session) send(ctx context.Context, item *api.FlightInfo, snapshots <-ch
 		case <-ctx.Done():
 			return
 
-		case p := <-snapshots:
-			pending = append(pending, p.Data)
-			s.ui.SetActual(p.Data.PayloadKg, p.Data.FuelKg, p.Data.EnginesRunning)
+		case p := <-s.snapshots:
+			s.showActual(ctx, p)
+
+			sendNow := p.Paused != wasPaused || p.Crashed
+			if p.Paused && !sendNow {
+				continue
+			}
+			wasPaused = p.Paused
+
+			log.Printf("Collected: %+v", p)
+			pending = append(pending, p)
 			if len(pending) > windowSize {
 				pending = pending[1:] // cap: drop oldest unsent
 			}
-			if p.Flush {
+			if sendNow {
 				flush()
 			}
 

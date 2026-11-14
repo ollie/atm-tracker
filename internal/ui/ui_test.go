@@ -65,8 +65,42 @@ func TestStartFlightShowsTheRouteAndTargets(t *testing.T) {
 	assert.Equal(t, "LKPR → EGLL", u.flightValue.Text)
 	assert.Equal(t, "Boarding", u.statusValue.Text)
 	assert.Equal(t, "1200 kg payload, 800 kg fuel", u.targetsValue.Text)
-	assert.Equal(t, "–", u.actualValue.Text, "the previous flight's load must not linger until the first snapshot")
 	assert.Equal(t, "–", u.eventValue.Text)
+}
+
+func TestStartFlightKeepsWhatTheSimReports(t *testing.T) {
+	u := testUI(t)
+	u.SetLive("X-Plane", true)
+	u.SetActual(1150, 780, 2)
+
+	u.StartFlight(&api.FlightInfo{Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
+
+	assert.Equal(t, "1150 kg payload, 780 kg fuel", u.actualValue.Text, "the load is the sim's, a new flight does not change it")
+	assert.Equal(t, "Running", u.enginesValue.Text)
+	assert.Equal(t, "X-Plane (receiving)", u.simValue.Text)
+}
+
+func TestTheUnitOfTheLastFlightIsUsedBeforeTheNextOne(t *testing.T) {
+	app := test.NewApp()
+	New(app, "0.0.0", Actions{}).SetFlight(&api.FlightInfo{WeightUnit: "lb"})
+
+	u := New(app, "0.0.0", Actions{})
+	u.SetActual(1000, 500, 0)
+
+	assert.Equal(t, "2205 lb payload, 1102 lb fuel", u.actualValue.Text, "with no flight the tracker would show kg next to a website in lb")
+}
+
+func TestLoggingOutClearsWhatTheSimReported(t *testing.T) {
+	u := testUI(t)
+	u.SignedIn()
+	u.SetLive("X-Plane", true)
+	u.SetActual(1150, 780, 2)
+
+	u.SignedOut()
+
+	assert.Equal(t, "–", u.actualValue.Text)
+	assert.Equal(t, "–", u.enginesValue.Text)
+	assert.Equal(t, "Not tracking", u.simValue.Text)
 }
 
 func TestStartFlightShowsTheTargetsInThePlayersUnit(t *testing.T) {
@@ -127,6 +161,7 @@ func TestTheActualLoadRendersInTheFlightsUnit(t *testing.T) {
 
 func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	u := testUI(t)
+	u.SetLive("X-Plane", true)
 	u.StartFlight(&api.FlightInfo{Status: "taxi_to_gate", Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
 	u.SetActual(1150, 780, 2)
 	require.True(t, u.deboardButton.Visible())
@@ -136,15 +171,15 @@ func TestSetNoFlightClearsTheFlightFields(t *testing.T) {
 	assert.Equal(t, "No flight to fly", u.flightValue.Text)
 	assert.Equal(t, "–", u.statusValue.Text)
 	assert.Equal(t, "–", u.targetsValue.Text)
-	assert.Equal(t, "–", u.actualValue.Text)
-	assert.Equal(t, "–", u.enginesValue.Text)
 	assert.False(t, u.deboardButton.Visible(), "there is no flight to deboard")
-	assert.Equal(t, "Not tracking", u.simValue.Text)
+	assert.Equal(t, "1150 kg payload, 780 kg fuel", u.actualValue.Text, "the player loads the next flight against these numbers")
+	assert.Equal(t, "Running", u.enginesValue.Text)
+	assert.Equal(t, "X-Plane (receiving)", u.simValue.Text)
 }
 
 func TestTheEnginesRowSaysWhetherTheyAreRunning(t *testing.T) {
 	u := testUI(t)
-	u.StartFlight(&api.FlightInfo{Departure: api.AirportInfo{Code: "LKPR"}, Arrival: api.AirportInfo{Code: "EGLL"}})
+	u.SignedIn()
 	assert.Equal(t, "–", u.enginesValue.Text, "nothing is known before the first snapshot")
 
 	u.SetActual(1150, 780, 1)

@@ -90,6 +90,7 @@ func newFlightHarness(t *testing.T, timings Timings) *flightHarness {
 		timings:       timings,
 		simTimings:    testSimTimings(),
 		deboards:      h.deboards,
+		snapshots:     make(chan telemetry.Position, windowSize),
 	}
 
 	h.ctx, h.stop = context.WithCancel(t.Context())
@@ -100,11 +101,17 @@ func newFlightHarness(t *testing.T, timings Timings) *flightHarness {
 func (h *flightHarness) start(run func(ctx context.Context)) {
 	h.t.Helper()
 
+	simClosed := make(chan struct{})
+	go func() {
+		defer close(simClosed)
+		h.session.readSim(h.ctx)
+	}()
 	go func() {
 		defer close(h.done)
 		defer h.client.Close()
 		run(h.ctx)
 	}()
+	h.t.Cleanup(func() { h.stop(); <-simClosed })
 
 	h.sim.Subscriptions()
 }
@@ -203,6 +210,86 @@ func TestAFlightShowsWhetherTheEnginesAreRunning(t *testing.T) {
 	h.settle()
 
 	assert.Equal(t, 2, h.display.Actual().enginesRunning, "the Engines row cannot say whether the player may still deboard")
+}
+
+func TestTheLoadShowsBeforeThereIsAFlight(t *testing.T) {
+	h := newFlightHarness(t, testTimings())
+	h.start(h.session.run)
+
+	h.sim.Send(
+		xplanetest.Update{Index: 11, Value: 5000},
+		xplanetest.Update{Index: 14, Value: 6930},
+		xplanetest.Update{Index: 15, Value: 780},
+	)
+
+	assert.Eventually(t, func() bool { return h.display.Actual().fuelKg == 780 }, waitTime, time.Millisecond, "the player has to open the sim's weight menu to see what is loaded")
+	assert.InDelta(t, 1150, h.display.Actual().payloadKg, 0.001)
+
+	h.sim.Send(xplanetest.Update{Index: 1, Value: 1}, xplanetest.Update{Index: 15, Value: 790})
+
+	assert.Eventually(t, func() bool { return h.display.Actual().fuelKg == 790 }, waitTime, time.Millisecond, "fuel loaded into a paused sim must show too")
+	h.settle()
+
+	assert.Empty(t, h.server.Sent(), "there is no flight to send positions to")
+}
+
+func TestAFlightStartedOnAPausedSimSendsOnePausedPosition(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+
+	h.sim.Send(xplanetest.Update{Index: 1, Value: 1}, xplanetest.Update{Index: 15, Value: 780})
+	h.server.WaitForPosts(1)
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 790})
+	assert.Eventually(t, func() bool { return h.display.Actual().fuelKg == 790 }, waitTime, time.Millisecond, "fuel loaded into a paused sim must show")
+	h.settle()
+
+	sent := h.server.Sent()
+	require.Len(t, sent, 1, "a paused sim has nothing new for the API")
+	assert.True(t, sent[0].Paused, "the website shows the flight as paused from this position")
+}
+
+func TestAFlightSendsAtOnceWhenThePauseStartsAndEnds(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 780})
+	require.Eventually(t, func() bool { return h.display.Actual().fuelKg == 780 }, waitTime, time.Millisecond)
+	require.Empty(t, h.server.Sent(), "plain positions wait for the next send")
+
+	h.sim.Send(xplanetest.Update{Index: 1, Value: 1})
+	h.server.WaitForPosts(1)
+	sent := h.server.Sent()
+	assert.True(t, sent[len(sent)-1].Paused, "entering pause must send what is held")
+
+	h.sim.Send(xplanetest.Update{Index: 1, Value: 0})
+	h.server.WaitForPosts(1)
+	h.settle()
+
+	assert.False(t, h.server.Sent()[len(sent)].Paused, "leaving pause must send at once")
+}
+
+func TestAFlightSendsACrashAtOnce(t *testing.T) {
+	h := startFlightWith(t, testFlight(), atTheGate())
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 780}, xplanetest.Update{Index: 29, Value: 1})
+	h.server.WaitForPosts(1)
+	h.settle()
+
+	sent := h.server.Sent()
+	assert.True(t, sent[len(sent)-1].Crashed, "a crash must reach the server at once")
+}
+
+func TestAFlightDoesNotSendWhatTheSimSaidBeforeIt(t *testing.T) {
+	h := newFlightHarness(t, testTimings())
+	h.session.snapshots <- telemetry.Position{UUID: "from-before-the-flight", Crashed: true}
+	h.start(func(ctx context.Context) { h.session.fly(ctx, testFlight()) })
+
+	h.sim.Send(xplanetest.Update{Index: 15, Value: 4200})
+	h.server.WaitForPosts(1)
+	h.settle()
+
+	for _, position := range h.server.Sent() {
+		assert.NotEqual(t, "from-before-the-flight", position.UUID, "a crash from before the flight would end it")
+	}
 }
 
 func TestPressingDeboardSendsTheLastPositionsAndSettlesTheFlight(t *testing.T) {
@@ -376,7 +463,7 @@ func TestAFlightThatStoppedAwayFromAnyAirportSaysSoWithoutResending(t *testing.T
 	assert.Contains(t, h.display.Note(), "No airport here")
 }
 
-func TestAFlightUnsubscribesWhenItEnds(t *testing.T) {
+func TestTheSessionUnsubscribesWhenItEnds(t *testing.T) {
 	h := startFlight(t, testFlight())
 
 	h.settle()

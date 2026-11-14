@@ -12,6 +12,8 @@ import (
 	"github.com/ollie/atm-tracker/internal/api"
 	"github.com/ollie/atm-tracker/internal/api/apitest"
 	"github.com/ollie/atm-tracker/internal/ui"
+	"github.com/ollie/atm-tracker/internal/xplane"
+	"github.com/ollie/atm-tracker/internal/xplane/xplanetest"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/oauth2"
 )
@@ -186,6 +188,7 @@ func TestATrackerWithADeadTokenLearnsAtStartUpThatItIsUnsupported(t *testing.T) 
 
 	tr := New(test.NewApp(), display, "0.0.12")
 	tr.base = server.URL
+	tr.sim = &xplane.Sim{Addr: xplanetest.NewSim(t, xplane.DatarefCount()).Addr}
 	tr.store.Save(&oauth2.Token{AccessToken: "expired", RefreshToken: "revoked", Expiry: time.Now().Add(-time.Hour)})
 	tr.Start()
 

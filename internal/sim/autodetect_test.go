@@ -169,7 +169,7 @@ func TestAutodetectPausesWhoeverAnswersBeforeAnyFlight(t *testing.T) {
 	assert.Len(t, second.opened, 1)
 }
 
-func TestResubscribeEndsTheFlightWhenAPreferredSimAppears(t *testing.T) {
+func TestResubscribeClosesTheConnectionWhenAPreferredSimAppears(t *testing.T) {
 	first, second, a := twoSims()
 
 	conn, err := a.Open()
@@ -181,7 +181,7 @@ func TestResubscribeEndsTheFlightWhenAPreferredSimAppears(t *testing.T) {
 
 	first.openErr = nil
 	require.NoError(t, conn.Resubscribe())
-	assert.True(t, second.opened[0].closed, "closing the socket ends the flight, the next one opens the preferred sim")
+	assert.True(t, second.opened[0].closed, "closing the socket ends the connection, the next one opens the preferred sim")
 	require.Len(t, first.opened, 1)
 	assert.True(t, first.opened[0].closed, "the probe is not kept")
 }

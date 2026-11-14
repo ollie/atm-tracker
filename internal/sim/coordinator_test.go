@@ -7,7 +7,6 @@ import (
 
 	"github.com/ollie/atm-tracker/internal/telemetry"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -26,7 +25,7 @@ func silentSimTimings() Timings {
 type coordinatorHarness struct {
 	t         *testing.T
 	updates   chan Update
-	snapshots chan Snapshot
+	snapshots chan telemetry.Position
 	live      chan bool
 	resubs    chan struct{}
 }
@@ -37,7 +36,7 @@ func startCoordinator(t *testing.T, tm Timings) *coordinatorHarness {
 	h := &coordinatorHarness{
 		t:         t,
 		updates:   make(chan Update, UpdateBuffer),
-		snapshots: make(chan Snapshot, 16),
+		snapshots: make(chan telemetry.Position, 16),
 		live:      make(chan bool, 16),
 		resubs:    make(chan struct{}, 16),
 	}
@@ -67,37 +66,36 @@ func (h *coordinatorHarness) fuel(kg float32) {
 	h.updates <- func(p *telemetry.Position) { p.FuelKg = kg }
 }
 
-func (h *coordinatorHarness) next() Snapshot {
+func (h *coordinatorHarness) next() telemetry.Position {
 	h.t.Helper()
 
 	select {
-	case s := <-h.snapshots:
-		return s
+	case p := <-h.snapshots:
+		return p
 	case <-time.After(waitTime):
 		h.t.Fatal("no snapshot arrived")
-		return Snapshot{}
+		return telemetry.Position{}
 	}
 }
 
-func (h *coordinatorHarness) nextPaused(paused bool) Snapshot {
+func (h *coordinatorHarness) nextWhere(failure string, matches func(telemetry.Position) bool) {
 	h.t.Helper()
 
-	for {
-		s := h.next()
-		if s.Data.Paused == paused {
-			return s
+	for deadline := time.Now().Add(waitTime); time.Now().Before(deadline); {
+		if matches(h.next()) {
+			return
 		}
-
-		require.Falsef(h.t, s.Flush, "a snapshot before the pause change asked for a flush: %+v", s.Data)
 	}
+
+	h.t.Fatal(failure)
 }
 
 func (h *coordinatorHarness) expectSilence() {
 	h.t.Helper()
 
 	select {
-	case s := <-h.snapshots:
-		h.t.Fatalf("a snapshot arrived while paused: %+v", s.Data)
+	case p := <-h.snapshots:
+		h.t.Fatalf("a snapshot arrived before the sim talked: %+v", p)
 	case <-time.After(settleTime):
 	}
 }
@@ -114,46 +112,36 @@ func TestCoordinatorSnapshotsAreStampedForTheServer(t *testing.T) {
 	h.fuel(4200)
 
 	first := h.next()
-	assert.False(t, first.Flush, "a plain snapshot does not force a send")
-	assert.NotEmpty(t, first.Data.UUID, "the server deduplicates on uuid")
-	assert.Equal(t, time.UTC, first.Data.ReportedAt.Location(), "the server orders by reportedAt")
-	assert.InDelta(t, 4200, first.Data.FuelKg, 0.001)
+	assert.NotEmpty(t, first.UUID, "the server deduplicates on uuid")
+	assert.Equal(t, time.UTC, first.ReportedAt.Location(), "the server orders by reportedAt")
+	assert.InDelta(t, 4200, first.FuelKg, 0.001)
 
-	assert.NotEqual(t, first.Data.UUID, h.next().Data.UUID, "two snapshots share a uuid")
+	assert.NotEqual(t, first.UUID, h.next().UUID, "two snapshots share a uuid")
 }
 
-func TestCoordinatorFlushesOnPauseAndStaysQuiet(t *testing.T) {
+func TestCoordinatorKeepsReadingAPausedSim(t *testing.T) {
 	h := startCoordinator(t, testTimings())
-	h.fuel(4200)
-	h.next()
-
 	h.pause(true)
-	assert.True(t, h.nextPaused(true).Flush, "entering pause must flush what is held")
+	h.fuel(4200)
 
-	h.expectSilence()
+	h.nextWhere("the paused sim went quiet", func(p telemetry.Position) bool { return p.Paused })
 
-	h.pause(false)
-	assert.True(t, h.nextPaused(false).Flush, "leaving pause must flush immediately")
-	assert.False(t, h.next().Flush, "the flight goes back to plain snapshots")
+	h.fuel(4300)
+	h.nextWhere("fuel loaded into a paused sim never reached the tracker", func(p telemetry.Position) bool {
+		return p.Paused && p.FuelKg == 4300
+	})
 }
 
-func TestCoordinatorFlushesACrashOnceAndClearsIt(t *testing.T) {
+func TestCoordinatorReportsACrashOnce(t *testing.T) {
 	h := startCoordinator(t, testTimings())
 	h.fuel(4200)
 	h.next()
 
 	h.updates <- func(p *telemetry.Position) { p.Crashed = true }
 
-	s := h.next()
-	for !s.Data.Crashed {
-		require.Falsef(t, s.Flush, "a snapshot before the crash asked for a flush: %+v", s.Data)
-		s = h.next()
-	}
-	assert.True(t, s.Flush, "a crash must reach the server at once")
+	h.nextWhere("the crash never reached the tracker", func(p telemetry.Position) bool { return p.Crashed })
 
-	after := h.next()
-	assert.False(t, after.Data.Crashed, "a crash the server ignored must not carry into later snapshots")
-	assert.False(t, after.Flush)
+	assert.False(t, h.next().Crashed, "a crash the server ignored must not carry into later snapshots")
 }
 
 func TestCoordinatorResubscribesWhenTheSimGoesQuiet(t *testing.T) {

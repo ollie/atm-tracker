@@ -30,6 +30,7 @@ const (
 	unitLb      = "lb"
 
 	prefAlwaysOnTop = "alwaysOnTop"
+	prefWeightUnit  = "weightUnit"
 )
 
 var latestReleaseURL = &url.URL{Scheme: "https", Host: "github.com", Path: "/ollie/atm-tracker/releases/latest"}
@@ -90,6 +91,7 @@ type UI struct {
 	timerTab     *container.TabItem
 	tabs         *container.AppTabs
 	pauseSim     func()
+	prefs        fyne.Preferences
 
 	unit    string
 	note    string
@@ -117,8 +119,9 @@ func New(app fyne.App, version string, actions Actions) *UI {
 		timerLeft:    widget.NewLabel(""),
 		timerNote:    widget.NewLabel(""),
 		pauseSim:     actions.PauseSim,
-		unit:         unitKg,
+		prefs:        app.Preferences(),
 	}
+	u.unit = unitOf(u.prefs.String(prefWeightUnit))
 	u.timerButton = widget.NewButton("Start", u.toggleTimer)
 	u.timerFields = []*widget.Entry{u.timerHours, u.timerMinutes, u.timerSeconds}
 	for _, e := range u.timerFields {
@@ -127,10 +130,9 @@ func New(app fyne.App, version string, actions Actions) *UI {
 	}
 	u.allowStart()
 
-	prefs := app.Preferences()
 	u.onTopNote.Hide()
 	u.onTopCheck = widget.NewCheck("Always on top", func(on bool) {
-		prefs.SetBool(prefAlwaysOnTop, on)
+		u.prefs.SetBool(prefAlwaysOnTop, on)
 		if on {
 			u.requestAlwaysOnTop()
 			u.onTopNote.Hide()
@@ -138,7 +140,7 @@ func New(app fyne.App, version string, actions Actions) *UI {
 			u.onTopNote.Show()
 		}
 	})
-	u.onTopCheck.SetChecked(prefs.Bool(prefAlwaysOnTop))
+	u.onTopCheck.SetChecked(u.prefs.Bool(prefAlwaysOnTop))
 
 	u.noteValue.Importance = widget.WarningImportance
 	u.logNote.Truncation = fyne.TextTruncateEllipsis
@@ -362,6 +364,7 @@ func (u *UI) SigningIn() {
 		u.loginButton.Disable()
 		u.flightValue.SetText("Waiting for the browser")
 		u.resetFlight()
+		u.resetSim()
 		u.resetNotes()
 	})
 }
@@ -373,6 +376,7 @@ func (u *UI) SignedIn() {
 		u.logoutButton.Enable()
 		u.flightValue.SetText("Looking for your flight")
 		u.resetFlight()
+		u.resetSim()
 		u.resetNotes()
 	})
 }
@@ -388,6 +392,7 @@ func (u *UI) SignedOut() {
 		u.loginButton.Enable()
 		u.flightValue.SetText("Log in to start tracking")
 		u.resetFlight()
+		u.resetSim()
 		u.resetNotes()
 	})
 }
@@ -420,8 +425,6 @@ func (u *UI) StartFlight(item *api.FlightInfo) {
 
 	fyne.Do(func() {
 		u.eventValue.SetText("–")
-		u.actualValue.SetText("–")
-		u.enginesValue.SetText("–")
 		u.resetNotes()
 	})
 }
@@ -432,7 +435,10 @@ func (u *UI) SetFlight(item *api.FlightInfo) {
 	targets := targetsText(item)
 
 	fyne.Do(func() {
-		u.unit = unit
+		if unit != u.unit {
+			u.unit = unit
+			u.prefs.SetString(prefWeightUnit, unit)
+		}
 		u.flightValue.SetText(route)
 		u.showStatus(item.Status)
 		u.targetsValue.SetText(targets)
@@ -478,11 +484,14 @@ func weightIn(unit string, kg float64) int {
 func (u *UI) resetFlight() {
 	u.statusValue.SetText("–")
 	u.targetsValue.SetText("–")
+	u.deboardButton.Hide()
+	u.eventValue.SetText("–")
+}
+
+func (u *UI) resetSim() {
 	u.actualValue.SetText("–")
 	u.enginesValue.SetText("–")
-	u.deboardButton.Hide()
 	u.simValue.SetText("Not tracking")
-	u.eventValue.SetText("–")
 }
 
 func (u *UI) resetNotes() {

@@ -13,6 +13,7 @@ import (
 	"github.com/ollie/atm-tracker/internal/config"
 	"github.com/ollie/atm-tracker/internal/msfs"
 	"github.com/ollie/atm-tracker/internal/sim"
+	"github.com/ollie/atm-tracker/internal/telemetry"
 	"github.com/ollie/atm-tracker/internal/xplane"
 	"golang.org/x/mod/semver"
 	"golang.org/x/oauth2"
@@ -179,13 +180,18 @@ func (t *Tracker) startSession(token *oauth2.Token) {
 		timings:       DefaultTimings(),
 		simTimings:    sim.DefaultTimings(),
 		deboards:      t.deboards,
+		snapshots:     make(chan telemetry.Position, windowSize),
 	}
 
-	t.wg.Add(1)
+	t.wg.Add(2)
 	go func() {
 		defer t.wg.Done()
 		defer client.Close()
 		s.run(ctx)
+	}()
+	go func() {
+		defer t.wg.Done()
+		s.readSim(ctx)
 	}()
 }
 

@@ -29,14 +29,9 @@ func DefaultTimings() Timings {
 	}
 }
 
-type Snapshot struct {
-	Data  telemetry.Position
-	Flush bool
-}
-
 type Coordinator struct {
 	Updates     <-chan Update
-	Snapshots   chan<- Snapshot
+	Snapshots   chan<- telemetry.Position
 	Resubscribe func()
 	SetLive     func(bool)
 	Timings     Timings
@@ -50,7 +45,7 @@ func (c *Coordinator) Run(ctx context.Context) {
 
 	var posData telemetry.Position
 	var lastPacket time.Time
-	live, wasPaused := false, false
+	live, silenceLogged := false, false
 	c.SetLive(false)
 
 	for {
@@ -61,7 +56,7 @@ func (c *Coordinator) Run(ctx context.Context) {
 		case u := <-c.Updates:
 			lastPacket = time.Now()
 			if !live {
-				live = true
+				live, silenceLogged = true, false
 				c.SetLive(true)
 			}
 
@@ -75,7 +70,10 @@ func (c *Coordinator) Run(ctx context.Context) {
 				live = false
 				c.SetLive(false)
 			}
-			log.Printf("no sim data for %s, re-subscribing", c.Timings.Silence)
+			if !silenceLogged {
+				log.Printf("no sim data for %s, re-subscribing until it answers", c.Timings.Silence)
+				silenceLogged = true
+			}
 			c.Resubscribe()
 
 		case <-snapshotTicker.C:
@@ -83,17 +81,10 @@ func (c *Coordinator) Run(ctx context.Context) {
 				continue
 			}
 
-			flush := posData.Paused != wasPaused || posData.Crashed
-			if posData.Paused && !flush {
-				continue
-			}
-			wasPaused = posData.Paused
-
 			posData.UUID = uuid.NewString()
 			posData.ReportedAt = time.Now().UTC()
-			log.Printf("Collected: %+v", posData)
 
-			snapshot := Snapshot{Data: posData, Flush: flush}
+			snapshot := posData
 			posData.Crashed = false
 
 			select {
