@@ -114,6 +114,19 @@ func TestReaderDropsDataWhileNoFlightIsRunning(t *testing.T) {
 	assert.False(t, p.Paused)
 }
 
+func TestReaderDropsDataWhileMSFSLoadsAFlight(t *testing.T) {
+	fakeSim, updates, _ := startReader(t)
+	fakeSim.SendData(requestID, values(0, 0.0000127)...)
+
+	assert.Nil(t, receive(t, updates), "MSFS parks the plane at 0/0 while it reloads a flight")
+
+	fakeSim.SendData(requestID, values(54.58, 18.52)...)
+
+	var p telemetry.Position
+	receive(t, updates)(&p)
+	assert.InDelta(t, 54.58, p.Lat, 0.001)
+}
+
 func TestReaderPassesThePauseStateOn(t *testing.T) {
 	fakeSim, updates, _ := startReader(t)
 

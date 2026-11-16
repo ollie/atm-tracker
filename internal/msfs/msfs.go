@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -215,6 +216,10 @@ func (c *connection) Run(ctx context.Context, updates chan<- sim.Update, stop co
 					log.Printf("MSFS %v", err)
 					dataLogged = true
 				}
+				continue
+			}
+			// MSFS sends this when paused inside menu.
+			if math.Abs(values[latitude]) < 0.001 && math.Abs(values[longitude]) < 0.001 {
 				continue
 			}
 			update = dataUpdate(values, simPaused)
